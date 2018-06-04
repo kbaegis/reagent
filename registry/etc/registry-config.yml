@@ -1,0 +1,28 @@
+
+version: 0.1
+log:
+  fields:
+    service: registry
+storage:
+  cache:
+    blobdescriptor: inmemory
+  filesystem:
+    rootdirectory: /opt/
+http:
+  addr: :4000
+  host: https://crucible.lab:4000
+  secret: d32aef42ad8ff2167f96e532054bc1c7
+  tls: 
+    certificate: /etc/ssl/docker-registry/docker-registry.cert.pem
+    key: /etc/ssl/docker-registry/docker-registry.key.pem
+  headers:
+    X-Content-Type-Options: [nosniff]
+health:
+  storagedriver:
+    enabled: true
+    interval: 10s
+threshold: 3
+auth:
+  htpasswd:
+    realm: basic-realm
+    path: /opt/auth/htpasswd

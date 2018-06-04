@@ -1,0 +1,5 @@
+implement dry-run functionality
+implement improved logging function
+
+ROLLING UPGRADE:
+docker image inspect <image>|jq '.[].Config.Labels."nulllabs.docker.cmd"'

@@ -1,0 +1,56 @@
+##Adds portage and standard packages to stage3 oci image
+FROM crucible.lab:4000/oci/gentoo-stage3-amd64-hardened:latest
+ARG BDATE="$(date --rfc-3339=date)"
+ARG GHEAD="$(git rev-parse HEAD)"
+ARG THREADS=33
+LABEL nulllabs.build-date="$BDATE" \
+nulllabs.name="portage" \
+nulllabs.maintainer="kbaegis@gmail.com" \
+nulllabs.description="Base portage container" \
+nulllabs.usage="https://services.home/git/NullLabs/oci/src/master/README.md" \
+nulllabs.url="https://services.home/git/NullLabs/oci/src/master/README.md" \
+nulllabs.vcs-url="https://services.home/git/NullLabs/oci/src/master/" \
+nulllabs.vcs-ref="$GHEAD" \
+nulllabs.vendor="NullLabs" \
+nulllabs.version="beta-0.0.1" \
+nulllabs.schema-version="1.0" \
+nulllabs.docker.cmd="docker run -it --name nulllabs-portage-dev -l nulllabs.image=crucible.lab:4000/oci/portage crucible.lab:4000/oci/portage:latest" \
+nulllabs.docker.cmd.devel="docker run -it --name nulllabs-portage-tmp -l nulllabs.image=crucible.lab:4000/oci/portage --entrypoint=/bin/bash crucible.lab:4000/oci/portage:latest" \
+nulllabs.docker.cmd.test="docker run -it --name nulllabs-portage-test -l nulllabs.image=crucible.lab:4000/oci/portage --rm --entrypoint=/bin/bash crucible.lab:4000/oci/portage:latest" \
+nulllabs.docker.cmd.debug="docker exec -it nulllabs-portage bash" \
+nulllabs.docker.cmd.help="docker exec -it nulllabs-portage /usr/local/bin/entrypoint.sh --help" \
+nulllabs.docker.params="THREADS"
+ENV PORTAGE_BINHOST="https://crucible.lab/generic" \
+  PORTDIR="/usr/portage" \
+  PKGDIR="/usr/portage/packages/generic" \
+  FEATURES="binpkg-multi-instance" \
+  MAKEOPTS="-j$THREADS" \
+  EMERGE_DEFAULT_OPTS="-bg" \
+  GENTOO_MIRRORS="https://crucible.lab" \
+  SSL_CERT_FILE="/etc/ssl/certs/ca-certificates.crt" \
+  EDITOR="/usr/bin/vi"
+ADD ./.build/ /root/.build/
+#Set up portage for syncing and builds
+RUN mkdir -p /usr/local/share/ca-certificates/ \
+ && mkdir -p /etc/portage/env/ \
+ && mkdir -p /etc/portage/package.use/ \
+ && mkdir -p /etc/portage/repos.conf \
+ && printf '[gentoo]\nlocation = /usr/portage\nsync-type = rsync\nsync-uri = rsync://crucible.mgmt/gentoo-portage\nauto-sync = yes\n' >/etc/portage/repos.conf/gentoo.conf \
+ && mkdir -p /usr/portage/distfiles/ \
+ && chmod 764 /usr/portage/distfiles/ \
+ && chown portage:portage /usr/portage/distfiles/
+ADD ./.x509/CA.cert.pem /usr/local/share/ca-certificates/
+##Build
+RUN emaint sync -a \
+ && printf 'app-misc/ca-certificates cacert\n' >/etc/portage/package.use/ca-certificates \
+ && printf "EMERGE_DEFAULT_OPTS='-bg'\n" >>/etc/portage/make.conf \
+ && FETCHCOMMAND='wget -t 3 -T 60 --passive-ftp --no-check-certificate -O "${DISTDIR}/${FILE}" "${URI}"' RESUMECOMMAND='wget -c -t 3 -T 60 --passive-ftp --no-check-certificate -O "${DISTDIR}/${FILE}" "${URI}"' emerge -1 app-misc/ca-certificates \
+ && update-ca-certificates \
+ && cat /usr/local/share/ca-certificates/CA.cert.pem >>/etc/ssl/certs/ca-certificates.crt \
+ && emerge dev-vcs/git app-editors/vim \
+ && emerge -DNu world --keep-going \
+ && emerge --depclean \
+ && printf "US/Mountain\n" >/etc/timezone \
+ && $HOME/.build/rsync.sh
+
+ENTRYPOINT ["/bin/bash"]

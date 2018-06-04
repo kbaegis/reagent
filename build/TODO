@@ -1,0 +1,3 @@
+*podman login
+opt/oci git pull
+buildah git pull

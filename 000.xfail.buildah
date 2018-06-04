@@ -1,0 +1,3 @@
+FROM crucible.lab:4000/nulllabs/alpine:edge
+
+RUN /bin/false

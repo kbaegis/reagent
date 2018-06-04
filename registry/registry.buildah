@@ -1,0 +1,18 @@
+FROM crucible.lab:4000/oci/go:latest
+LABEL maintainer="poseidon@poseidon.mgmt"
+
+RUN mkdir -p /etc/docker/registry/ \
+ && mkdir -p /etc/ssl/docker-registry/
+ADD etc/* /etc/docker/registry/
+ADD .x509/* /etc/ssl/docker-registry/
+ADD bin/* /usr/local/bin/
+
+RUN go get services.lab/git/NullLabs/docker-distribution.git/cmd/registry \
+ && $HOME/.build/finalize.sh
+
+EXPOSE 4000/tcp
+
+ENTRYPOINT ["/root/.go/bin/registry"]
+CMD ["serve","/etc/docker/registry/registry-config.yml"]
+
+HEALTHCHECK --interval=30s --timeout=1s CMD /usr/local/bin/healthcheck.sh

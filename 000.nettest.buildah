@@ -1,0 +1,5 @@
+FROM crucible.lab:4000/nulllabs/alpine:edge
+
+RUN printf 'Local-test\n'; ping -c2 172.21.255.254 \
+ && printf 'Nexthop-test\n'; ping -c2 207.225.112.5 \
+ && printf 'DNS-test\n'; ping -c2 eff.org

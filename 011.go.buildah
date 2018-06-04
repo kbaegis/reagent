@@ -1,0 +1,39 @@
+FROM crucible.lab:4000/oci/libressl:latest
+ARG BDATE="$(date --rfc-3339=date)"
+ARG GHEAD="$(git rev-parse HEAD)"
+ARG THREADS=33
+LABEL nulllabs.build-date="$BDATE" \
+nulllabs.name="go" \
+nulllabs.maintainer="kbaegis@gmail.com" \
+nulllabs.description="Build container for catalyst/buildah/jenkins CI" \
+nulllabs.usage="https://services.home/git/NullLabs/oci/src/master/README.md" \
+nulllabs.url="https://services.home/git/NullLabs/oci/src/master/README.md" \
+nulllabs.vcs-url="https://services.home/git/NullLabs/oci/src/master/" \
+nulllabs.vcs-ref="$GHEAD" \
+nulllabs.vendor="NullLabs" \
+nulllabs.version="beta-0.0.1" \
+nulllabs.schema-version="1.0" \
+nulllabs.docker.cmd="docker run -d --name nulllabs-go -l nulllabs.image=crucible.lab:4000/oci/go crucible.lab:4000/oci/go:latest" \
+nulllabs.docker.cmd.devel="docker run -it --name nulllabs-go-tmp -l nulllabs.image=crucible.lab:4000/oci/go --entrypoint=/bin/bash crucible.lab:4000/oci/go:latest" \
+nulllabs.docker.cmd.test="docker run -it --name nulllabs-go-test -l nulllabs.image=crucible.lab:4000/oci/go --rm --entrypoint=/bin/bash crucible.lab:4000/oci/go:latest" \
+nulllabs.docker.cmd.debug="docker exec -it nulllabs-go bash" \
+nulllabs.docker.cmd.help="docker exec -it nulllabs-go /usr/local/bin/entrypoint.sh --help" \
+nulllabs.docker.params="REPO=,THREADS="
+ENV PORTAGE_BINHOST="https://crucible.lab/generic" \
+  PORTDIR="/usr/portage" \
+  PKGDIR="/usr/portage/packages/generic" \
+  FEATURES="binpkg-multi-instance" \
+  MAKEOPTS="-j$THREADS" \
+  EMERGE_DEFAULT_OPTS="-bg" \
+  GENTOO_MIRRORS="https://crucible.lab" \
+  SSL_CERT_FILE="/etc/ssl/certs/ca-certificates.crt" \
+  EDITOR="/usr/bin/vi" \
+  GOPATH="/root/.go" \
+  GOBIN="/root/.go/bin"
+RUN mkdir $HOME/.go \
+ && printf 'FEATURES="-usersandbox"\n' >> /etc/portage/env/nousersandbox.conf \
+ && printf 'dev-lang/go nousersandbox.conf\n' >> /etc/portage/package.env \
+ && emerge dev-lang/go \
+ && $HOME/.build/rsync.sh
+
+ENTRYPOINT ["/bin/bash"]

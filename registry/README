@@ -1,0 +1,2 @@
+read -s PASSWORD;export PASSWORD;docker run --entrypoint htpasswd registry:2 -Bbn poseidon $PASSWORD >>/opt/docker-registry/auth/htpasswd;unset PASSWORD
+docker run -it -v /opt/docker-registry/data/:/registry -e REGISTRY_URL=crucible.lab:4000 -e CURL_INSECURE=true mortensrasmussen/docker-registry-manifest-cleanup

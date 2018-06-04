@@ -1,0 +1,28 @@
+FROM crucible.lab:4000/oci/libressl:latest
+LABEL nulllabs.build-date="$(date --rfc-3339=date)" \
+nulllabs.name="keepalived" \
+nulllabs.maintainer="kbaegis@gmail.com" \
+nulllabs.description="NullLabs keepalived" \
+nulllabs.usage="https://services.home/git/NullLabs/oci/src/master/README.md" \
+nulllabs.url="https://services.home/git/NullLabs/oci/src/master/README.md" \
+nulllabs.vcs-url="https://services.home/git/NullLabs/oci/src/master/" \
+nulllabs.vcs-ref="$(git rev-parse HEAD)" \
+nulllabs.vendor="NullLabs" \
+nulllabs.version="beta-0.0.1" \
+nulllabs.schema-version="1.0" \
+nulllabs.docker.cmd="docker run -d --name nulllabs-keepalived --network host --cap-add=NET_ADMIN --restart always -v /etc/conntrackd/:/etc/conntrackd/:ro -v /etc/keepalived/:/etc/keepalived:ro -l nulllabs.image=crucible.lab:4000/oci/keepalived crucible.lab:4000/oci/keepalived:latest" \
+nulllabs.docker.cmd.devel="docker run -it --name nulllabs-keepalived-tmp --network host --cap-add=NET_ADMIN --restart always -v /etc/conntrackd/:/etc/conntrackd/:ro -v /etc/keepalived/:/etc/keepalived:ro -l nulllabs.image=crucible.lab:4000/oci/keepalived --entrypoint=/bin/bash crucible.lab:4000/oci/keepalived:latest" \
+nulllabs.docker.cmd.test="docker run -it --name nulllabs-keepalived-test --network host --cap-add=NET_ADMIN --restart always -v /etc/conntrackd/:/etc/conntrackd/:ro -v /etc/keepalived/:/etc/keepalived:ro -l nulllabs.image=crucible.lab:4000/oci/keepalived --rm --entrypoint=/bin/bash crucible.lab:4000/oci/keepalived:latest" \
+nulllabs.docker.cmd.debug="docker exec -it nulllabs-keepalived bash" \
+nulllabs.docker.cmd.help="docker exec -it nulllabs-keepalived /usr/local/bin/entrypoint.sh --help" \
+nulllabs.docker.params="REPO=,THREADS="
+
+RUN echo 'sys-cluster/keepalived ipv6 snmp' >>/etc/portage/package.use/keepalived \
+ && emerge -bg sys-cluster/keepalived net-firewall/conntrack-tools \
+ && $HOME/.build/finalize.sh
+ADD etc/* /etc/keepalived/
+ADD bin/* /usr/local/bin/
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+
+HEALTHCHECK --interval=30s --timeout=1s CMD /usr/local/bin/healthcheck.sh

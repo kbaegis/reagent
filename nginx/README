@@ -1,0 +1,3 @@
+docker pull crucible.lab:4000/gentoo/nginx:$DATE;docker run -d -v /var/www/:/var/www/ -v /var/nfs:/var/nfs --name nulllabs-nginx -p 443:443 --restart always -l nulllabs=crucible.lab:4000/gentoo/nginx crucible.lab:4000/gentoo/nginx:$DATE;read -n1 -r -p "Press space to destroy..." key;docker stop nulllabs-nginx;docker rm nulllabs-nginx
+
+psql "sslmode=verify-ca sslcert=/etc/ssl/nextcloud/libpq-nextcloud.cert.pem sslkey=/etc/ssl/nextcloud/libpq-nextcloud.key.pem sslrootcert=/etc/ssl/nextcloud/CA.cert.pem" -h services.mgmt

@@ -1,0 +1,2 @@
+#Regenerate sqlite db from bind zonefiles:
+zone2sql --named-conf=/etc/bind/named.conf --gsqlite | sqlite3 pdns.db
