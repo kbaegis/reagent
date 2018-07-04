@@ -4,20 +4,22 @@ FROM crucible.lab:4000/oci/portage:latest
 ARG BDATE="$(date --rfc-3339=date)"
 ARG GHEAD="$(git rev-parse HEAD)"
 ARG THREADS=33
+ARG REPOURL="https://services.home/git/NullLabs/oci"
+ARG CREGISTRY="crucible.lab:4000/oci"
 LABEL nulllabs.build-date="$BDATE" \
 nulllabs.name="libressl" \
 nulllabs.maintainer="kbaegis@gmail.com" \
 nulllabs.description="Build container for catalyst/buildah/jenkins CI" \
-nulllabs.usage="https://services.home/git/NullLabs/oci/src/master/README.md" \
-nulllabs.url="https://services.home/git/NullLabs/oci/src/master/README.md" \
-nulllabs.vcs-url="https://services.home/git/NullLabs/oci/src/master/" \
+nulllabs.usage="$REPOURL/src/master/README.md" \
+nulllabs.url="$REPOURL/src/master/README.md" \
+nulllabs.vcs-url="$REPOURL/src/master/" \
 nulllabs.vcs-ref="$GHEAD" \
 nulllabs.vendor="NullLabs" \
 nulllabs.version="beta-0.0.1" \
 nulllabs.schema-version="1.0" \
-nulllabs.docker.cmd="docker run -d --name nulllabs-libressl -l nulllabs.image=crucible.lab:4000/oci/libressl crucible.lab:4000/oci/libressl:latest" \
-nulllabs.docker.cmd.devel="docker run -it --name nulllabs-libressn-tmp -l nulllabs.image=crucible.lab:4000/oci/libressl --entrypoint=/bin/bash crucible.lab:4000/oci/libressl:latest" \
-nulllabs.docker.cmd.test="docker run -it --name nulllabs-libressl-test -l nulllabs.image=crucible.lab:4000/oci/libressl --rm --entrypoint=/bin/bash crucible.lab:4000/oci/libressl:latest" \
+nulllabs.docker.cmd="docker run -d --name nulllabs-libressl -l nulllabs.image=$CREGISTRY/libressl $CREGISTRY/libressl:latest" \
+nulllabs.docker.cmd.devel="docker run -it --name nulllabs-libressn-tmp -l nulllabs.image=$CREGISTRY/libressl --entrypoint=/bin/bash $CREGISTRY/libressl:latest" \
+nulllabs.docker.cmd.test="docker run -it --name nulllabs-libressl-test -l nulllabs.image=$CREGISTRY/libressl --rm --entrypoint=/bin/bash $CREGISTRY/libressl:latest" \
 nulllabs.docker.cmd.debug="docker exec -it nulllabs-libressl bash" \
 nulllabs.docker.cmd.help="docker exec -it nulllabs-libressl /usr/local/bin/entrypoint.sh --help" \
 nulllabs.docker.params="REPO=,THREADS="
@@ -44,7 +46,7 @@ RUN echo 'USE="${USE} libressl"' >> /etc/portage/make.conf \
  && SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt emerge -1 libressl \
  && SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt emerge -1 openssh wget python:2.7 python:3.4 iputils \
  && echo CURL_SSL='libressl' >>/etc/portage/make.conf \
- && SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt GENTOO_MIRRORS='https://crucible.lab' FETCHCOMMAND='wget -t 3 -T 60 --passive-ftp --no-check-certificate -O "${DISTDIR}/${FILE}" "${URI}"' RESUMECOMMAND='wget -c -t 3 -T 60 --passive-ftp --no-check-certificate -O "${DISTDIR}/${FILE}" "${URI}"' emerge @preserved-rebuild \
+ && FETCHCOMMAND='wget -t 3 -T 60 --passive-ftp --no-check-certificate -O "${DISTDIR}/${FILE}" "${URI}"' RESUMECOMMAND='wget -c -t 3 -T 60 --passive-ftp --no-check-certificate -O "${DISTDIR}/${FILE}" "${URI}"' emerge @preserved-rebuild \
  && SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt emerge net-misc/curl \
  && SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt emerge --depclean \
  && for i in $(ls /tmp/*.gpg);do gpg --import $i;done \

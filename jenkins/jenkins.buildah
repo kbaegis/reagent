@@ -1,0 +1,39 @@
+FROM crucible.lab:4000/oci/java:latest
+ARG BDATE="$(date --rfc-3339=date)"
+ARG GHEAD="$(git rev-parse HEAD)"
+LABEL nulllabs.build-date="$BDATE" \
+nulllabs.name="jenkins" \
+nulllabs.maintainer="kbaegis@gmail.com" \
+nulllabs.description="NullLabs jenkins container" \
+nulllabs.usage="https://services.home/git/NullLabs/oci/src/master/jenkins/README.md" \
+nulllabs.url="https://services.home/git/NullLabs/oci/src/master/jenkins/README.md" \
+nulllabs.vcs-url="https://services.home/git/NullLabs/oci/src/master/jekins/" \
+nulllabs.vcs-ref="$GHEAD" \
+nulllabs.vendor="NullLabs" \
+nulllabs.version="beta-0.0.1" \
+nulllabs.schema-version="1.0" \
+nulllabs.docker.cmd="" \
+nulllabs.docker.cmd.devel="" \
+nulllabs.docker.cmd.test="" \
+nulllabs.docker.cmd.debug="docker exec -it nulllabs-pdns bash" \
+nulllabs.docker.cmd.help="docker exec -it nulllabs-pdns /usr/local/bin/entrypoint.sh --help" \
+nulllabs.docker.params="REPO=,THREADS="
+
+RUN printf 'dev-util/jenkins-bin ~amd64' >>/etc/portage/package.accept_keywords \
+ && emerge -bg dev-util/jenkins-bin
+
+RUN $HOME/.build/rsync.sh
+
+##Runtime
+#su jenkins
+#/usr/lib64/icedtea8/bin/java -Djava.awt.headless=true -DJENKINS_HOME='/var/lib/jenkins/home' -jar /opt/jenkins/jenkins.war
+
+ADD bin/* /usr/local/bin/
+
+EXPOSE 8080/tcp
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+
+#CMD ["-D","/var/lib/postgresql/10/data","-l","/var/log/pg.log","start"]
+
+#HEALTHCHECK --interval=30s --timeout=5s CMD /usr/local/bin/healthcheck.sh

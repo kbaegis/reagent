@@ -3,10 +3,8 @@
 #UID=$(id -u)
 GID=$(id -g)
 DATE=$(date "+%d-%m-%y")
-REPO="$( cd "$(dirname "$0")" ; pwd -P )"
+REPO="/opt/oci/"
 SPECPATH=/var/tmp/catalyst/builds/default
-PUSH=()
-FAILED=()
 INITIAL=($(realpath --relative-to=$REPO $REPO/*.*.buildah))
 THREADS=$(($(nproc) + 1))
 STAGE3TAR="$REPO/.stages/stage3-amd64-hardened-latest.tar.bz2"
@@ -24,16 +22,16 @@ trap '' 2
 usage() {
 #Returns help
   printf '%s\n' "usage: $0 [-p | --portage] [-c | --catalyst] [-i | --initial] [-b | --build '<images>'|'all'] [-e | --everything] [-h | --help] [-d | --debug]" 1>&2
-  exit 1
+  exit 0
 }
 
 arguments() {
 #function parses arguments
   OPTS=$(getopt -n $0 -s bash -o dpechib: --long debug,everything,portage,catalyst,help,initial,build: -- "$@")
-  if [ $? != 0 ]
+  if [ $# = 0 ]
   then 
     usage
-    exit 1
+    exit 0
   fi
   while true
   do
@@ -56,7 +54,7 @@ n=0;trap "cleanup catalyst" 2
 #Function runs catalyst for gentoo stage1-3;generates catalyst-cache containing all the cached builds from the previous run. This will take a long time the first time you run it.
   if [[ "$CATALYST" == "true" ]]
   then
-    emaint -a all
+    emaint -a all 1>/dev/null
     export CATALYSTCACHE=$(sudo buildah from $REGISTRY/catalyst-cache:latest)
     export CATALYSTCACHEMNT=$(sudo buildah mount $CATALYSTCACHE)
     rsync -arv $CATALYSTCACHEMNT/ /var/tmp/catalyst/packages/
@@ -76,9 +74,9 @@ n=0;trap "cleanup catalyst" 2
     done && \
     rsync -r /var/tmp/catalyst/packages/hardened/ $CATALYSTCACHEMNT && \
     sudo buildah umount $CATALYSTCACHE && \
-    sudo buildah commit --format oci --rm $CATALYSTCACHE $REGISTRY/catalyst-cache:$DATE && \
+    sudo buildah commit --format oci --rm --squash $CATALYSTCACHE $REGISTRY/catalyst-cache:$DATE && \
     sudo buildah tag $REGISTRY/catalyst-cache:$DATE $REGISTRY/catalyst-cache:latest && \
-    PUSH+=("$REGISTRY/catalyst-cache:$DATE" "$REGISTRY/catalyst-cache:latest")
+    export PUSH+=("$REGISTRY/catalyst-cache:$DATE" "$REGISTRY/catalyst-cache:latest")
   fi
 }
 
@@ -88,9 +86,9 @@ TIMEFORMAT="${blue}$2 took %E seconds to build.${normal}"
 #$1=dockerfile, $2 is image name, $3 is path and additional arguments
   if time (sudo buildah bud --build-arg GHEAD="$(git -C $REPO rev-parse HEAD)" --build-arg BDATE="$(date --rfc-3339=date)" -v "$PORTAGEMNT:/usr/portage/" -f $1 -t $REGISTRY/$2:latest -t "$REGISTRY/$2:$DATE" $3) 2> >(tee -a $REPO/build.log)
   then
-    PUSH+=("$REGISTRY/$2:latest" "$REGISTRY/$2:$DATE")
+    export PUSH+=("$REGISTRY/$2:latest" "$REGISTRY/$2:$DATE")
   else
-    FAILED+=("$1")
+    export FAILED+=("$1")
   fi
   return 0
 }
@@ -100,12 +98,14 @@ n=0;trap "cleanup registry-push" 2
 # Pushes images from PUSH() array
 # buildah push -f v2s2 $REGISTRY/$1:$DATE docker://$REGISTRY/$1:latest
 # buildah push -f v2s2 $REGSITRY/$1:$DATE docker://$REGSITRY/$1:$DATE
+  export PUSH
   for image in ${PUSH[@]}
   do
     printf '%s\n' "${yellow}Pushing $image.${normal}"|tee -a $REPO/build.log
     TIMEFORMAT="${blue}Image took %E seconds to push.${normal}"
     time (sudo buildah push -f v2s2 $image docker://$image) 2> >(tee -a ${REPO}/build.log)
   done
+  export FAILED
 }
 
 portage-sync() {
@@ -116,10 +116,10 @@ n=0;trap "cleanup portage-sync" 2
   then
     TIMEFORMAT="${blue}Updating portage took %E seconds.${normal}"
     time (
-      PORTDIR="$PORTAGEMNT" emaint -a sync
-      sudo buildah commit --format oci --rm $PORTAGE $REGISTRY/portagedir:$DATE && \
+      PORTDIR="$PORTAGEMNT" emaint -a sync 1>/dev/null
+      sudo buildah commit --format oci --rm --squash $PORTAGE $REGISTRY/portagedir:$DATE && \
       sudo buildah tag $REGISTRY/portagedir:$DATE $REGISTRY/portagedir:latest
-      PUSH+=("$REGISTRY/portagedir:$DATE" "$REGISTRY/portagedir:latest")
+      export PUSH+=("$REGISTRY/portagedir:$DATE" "$REGISTRY/portagedir:latest")
       buildah rm $PORTAGE
       export PORTAGE=$(sudo buildah from $REGISTRY/portagedir:latest)
       export PORTAGEMNT=$(sudo buildah mount $PORTAGE)
@@ -136,8 +136,8 @@ TIMEFORMAT="${blue}Bootstrap function took %E seconds.${normal}"
   then
     time (
       printf '%s\n' "${gold}Bootstrapping via stage3.${normal}"|tee -a $REPO/build.log 
-      export STAGE3=$(sudo buildah from scratch)
-      export STAGE3MNT=$(sudo buildah mount $STAGE3)
+      local STAGE3=$(sudo buildah from scratch)
+      local STAGE3MNT=$(sudo buildah mount $STAGE3)
 #     sudo rsync --chown=$UID:$GID -acv /var/tmp/catalyst/builds/hardened/ $REPO/.stages/||printf "Catalyst builds not found.\n"
       sudo buildah add $STAGE3 $STAGE3TAR /
       sudo buildah run $STAGE3 -- sed -i -e 's/#rc_sys=""/rc_sys="docker"/g' /etc/rc.conf
@@ -146,9 +146,11 @@ TIMEFORMAT="${blue}Bootstrap function took %E seconds.${normal}"
       sudo buildah config --cmd /bin/bash --created-by "poseidon" --author "poseidon@nulllabs" --label name=$REGSITRY/gentoo-stage3-amd64-hardened $STAGE3
       sudo buildah umount $STAGE3
       printf '%s\n' "${gold}Committing stage3 image.${normal}"|tee -a $REPO/build.log
-      sudo buildah commit --format oci --rm $STAGE3 $REGISTRY/gentoo-stage3-amd64-hardened:$DATE && \
+      sudo buildah commit --format oci --rm --squash $STAGE3 $REGISTRY/gentoo-stage3-amd64-hardened:$DATE && \
       sudo buildah tag $REGISTRY/gentoo-stage3-amd64-hardened:$DATE $REGISTRY/gentoo-stage3-amd64-hardened:latest && \
-      PUSH+=("$REGISTRY/gentoo-stage3-amd64-hardened:latest" "$REGISTRY/gentoo-stage3-amd64-hardened:$DATE")
+      export PUSH+=("$REGISTRY/gentoo-stage3-amd64-hardened:latest" "$REGISTRY/gentoo-stage3-amd64-hardened:$DATE")
+    export STAGE3=$(sudo buildah from $REGISTRY/gentoo-stage3-amd64-hardened:latest)
+    export STAGE3MNT=$(sudo buildah mount $STAGE3)
     ) 2> >(tee -a $REPO/build.log)
   else
     printf '%s\n' "${gold}Loading portage and stage3 from image.${normal}"|tee -a $REPO/build.log
@@ -191,8 +193,9 @@ n=0;trap "cleanup project_images" 2
     do
       read a b <<< $(echo $i|tr '/' ' ')
       printf '%s\n' "${gold}Building $a.${normal}"|tee -a $REPO/build.log
-      pathname=$(dirname $REPO/$i)
-      bud_build "$REPO/$i" $a "--squash $pathname"
+      pathname=$REPO/$i/
+#     bud_build "$REPO/$i" $a "--squash $pathname"
+      bud_build "$REPO/$i" $a "$pathname"
     done
   elif [[ ${BUILD_IMAGES[@]} ]]
   then
@@ -201,8 +204,9 @@ n=0;trap "cleanup project_images" 2
       if [ -e $REPO/$i/$i.buildah ]
       then
         printf '%s\n' "${gold}Building $i${normal}"|tee -a $REPO/build.log
-        pathname=$(dirname $REPO/$i)
-        bud_build "$REPO/$i/$i.buildah" $i "--squash $pathname"
+        pathname=$REPO/$i/
+#       bud_build "$REPO/$i/$i.buildah" $i "--squash $pathname"
+        bud_build "$REPO/$i/$i.buildah" $i "$pathname"
       else
         printf '%s\n' "${red}No buildah file found for $i. Skipping.${normal}"|tee -a $REPO/build.log
       fi
@@ -220,7 +224,6 @@ cleanup() {
 main() {
   BUILD_IMAGES_STRING="${BUILD_IMAGES[@]}"
   printf '%s\n' "${gold}$(if [[ "$CATALYST" == "true" ]];then printf "Catalyst build";else printf "Build";fi) initiated at $(date) with$(if [[ "$BUILD_INITIAL" == "true" ]];then printf " initial images and";fi)$(if [[ ${BUILD_IMAGES[@]} ]];then printf " project images: $BUILD_IMAGES_STRING.";else printf " no project images.";fi) ${normal}"|tee -a $REPO/build.log
-  TIMEFORMAT="${blue}$0 took %E seconds to run.${normal}"
   time (
     portage-sync
     catalyst
@@ -229,15 +232,22 @@ main() {
     project_images
     registry-push
     prune
+    TIMEFORMAT="${blue}$0 took %E seconds to run.${normal}" 
   ) 2> >(tee -a ${REPO}/build.log)
   printf '%s\n' "${gold}Script complete at $(date).${normal}"|tee -a $REPO/build.log
+  echo ${PUSH[@]}
+  echo ${FAILED[@]}
   if [ ${#PUSH[@]} -gt 0 ]
   then 
     printf "${blue}Success: %s${normal}\n" "${PUSH[@]}"|tee -a $REPO/build.log
+  else
+    printf "No success to report.\n"
   fi
   if [ ${#FAILED[@]} -gt 0 ]
   then 
     printf "${red}Failure: %s${normal}\n" "${FAILED[@]}"|tee -a $REPO/build.log
+  else
+    printf "No failure to report.\n"
   fi
 }
 

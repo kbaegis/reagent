@@ -1,0 +1,30 @@
+eap {
+	default_eap_type = tls
+	timer_expire     = 60
+	ignore_unknown_eap_types = no
+	cisco_accounting_username_bug = no
+	max_sessions = ${max_requests}
+	tls-config tls-common {
+		private_key_file = ${certdir}/Radius.key.pem
+		certificate_file = ${certdir}/Radius.cert.pem
+		ca_file = ${cadir}/CA.cert.pem
+		dh_file = ${certdir}/dh.8192
+		ca_path = ${cadir}
+		cipher_list = "DEFAULT"
+		cipher_server_preference = no
+		cache {
+			enable = no
+			lifetime = 24 # hours
+		}
+		verify {
+		}
+		ocsp {
+			enable = no
+			override_cert_url = yes
+			url = "http://127.0.0.1/ocsp/"
+		}
+	}
+	tls {
+		tls = tls-common
+	}
+}

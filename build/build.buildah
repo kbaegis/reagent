@@ -1,6 +1,7 @@
 FROM crucible.lab:4000/oci/go:latest
 ARG BDATE="$(date --rfc-3339=date)"
 ARG GHEAD="$(git rev-parse HEAD)"
+ARG GBRANCH="master"
 LABEL nulllabs.build-date="$BDATE" \
 nulllabs.name="build" \
 nulllabs.maintainer="kbaegis@gmail.com" \
@@ -29,14 +30,17 @@ ENV PORTAGE_BINHOST="https://crucible.lab/generic" \
   SSL_CERT_FILE="/etc/ssl/certs/ca-certificates.crt" \
   EDITOR="/usr/bin/vi" \
   GOPATH="/root/.go" \
-  GOBIN="/root/.go/bin"
+  GOBIN="/root/.go/bin" \
+  REGISTRY="crucible.lab:4000" \
+  NAMESPACE="/oci/"
 
 ADD .x509/* /root/.ssh/
 ADD bin/* /usr/local/bin/
-RUN printf 'dev-util/bats ~amd64\napp-emulation/skopeo ~amd64\ndev-util/catalyst ~amd64\ndev-python/snakeoil ~amd64\ndev-python/pydecomp ~amd64\n' >>/etc/portage/package.accept_keywords \
+RUN printf 'dev-util/bats ~amd64\napp-emulation/skopeo ~amd64\ndev-util/catalyst ~amd64\ndev-python/snakeoil ~amd64\ndev-python/pydecomp ~amd64\napp-emulation/cri-o ~amd64\nnet-misc/cni-plugins ~amd64\ndev-util/ostree ~amd64\n' >>/etc/portage/package.accept_keywords \
  && printf 'FEATURES="-usersandbox -sandbox"\n' >> /etc/portage/env/nosandbox.conf \
  && printf 'dev-go/go-md2man nosandbox.conf\napp-emulation/skopeo nosandbox.conf\n' >> /etc/portage/package.env \
  && printf 'autocmd BufNewFile,BufRead *.buildah set syntax=dockerfile\n' >> ~/.vimrc \
+ && printf "app-emulation/cri-o device-mapper seccomp btrfs ostree\n" >>/etc/portage/package.use/build \
  && emaint -a all \
  && emerge dev-go/sanitized-anchor-name dev-python/pygpgme dev-libs/libassuan sys-libs/libseccomp app-emulation/skopeo sys-fs/fuse sys-libs/libselinux app-admin/sudo dev-go/go-md2man dev-python/snakeoil dev-util/catalyst dev-libs/glib \
  && mkdir -p /etc/catalyst/portage/package.use \
@@ -67,10 +71,15 @@ RUN printf 'dev-util/bats ~amd64\napp-emulation/skopeo ~amd64\ndev-util/catalyst
  && printf "\nhost services.lab\nHostName services.lab\nIdentityFile ~/.ssh/id_rsa.private\nUser git\n" >>~/.ssh/config \
  && chmod 600 /root/.ssh/* \
  && git clone ssh://git@services.lab:2022/NullLabs/oci.git /opt/oci/ \
+ && git -C /opt/oci checkout $GBRANCH \
  && git -C /opt/oci/ submodule init \
  && git -C /opt/oci/ submodule update --recursive --remote \
  && $HOME/.build/finalize.sh \
- && ln -s /opt/oci/build.sh /usr/local/bin/build
+ && ln -s /opt/oci/pybuild.py /usr/local/bin/build \
+ && useradd jenkins -G wheel \
+ && printf "%%wheel ALL=(ALL) NOPASSWD: ALL\n" >>/etc/sudoers \
+ && mkdir -p /etc/containers/ \
+ && printf "[registries.search]\nregistries = ['$REGISTRY', 'docker.io', 'registry.fedoraproject.org', 'registry.access.redhat.com']\n\n[registries.insecure]\nregistries = ['$REGISTRY']\n\n[registries.block]\nregistries = ['docker.io']" >/etc/containers/registries.conf
 ADD catalyst/* /etc/catalyst/
 ADD catalyst-portage/* /etc/catalyst/portage/
 ADD catalyst-package.use/* /etc/catalyst/portage/package.use/

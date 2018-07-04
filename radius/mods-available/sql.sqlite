@@ -1,0 +1,5 @@
+# -*- text -*-
+sql {
+        database = 'sqlite'
+        filename = '/usr/local/etc/raddb/db.sqlite'
+}

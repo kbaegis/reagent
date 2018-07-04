@@ -1,0 +1,5 @@
+psql create user radius with password <password>;
+psql create database radius with owner radius;
+psql -h services.mgmt -p 6583 -U radius radius </etc/raddb/mods-config/sql/main/postgresql/schema.sql 
+psql -h services.mgmt -p 6583 -U radius radius </etc/raddb/mods-config/sql/main/postgresql/setup.sql
+INSERT INTO radcheck VALUES ( '0','poseidon@mbp.home','Cleartext-Password',':=','a1l2p3h4a');

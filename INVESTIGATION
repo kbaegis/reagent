@@ -1,0 +1,11 @@
+Singularity - https://github.com/singularityware/singularity
+
+**BuildAH - https://github.com/projectatomic/buildah
+umoci - https://github.com/openSUSE/umoci
+
+--acbuild - https://github.com/containers/build (deprecated)
+Kubler - https://github.com/edannenberg/kubler
+
+cri-o - https://github.com/kubernetes-incubator/cri-o
+
+cd $GOPATH/src/github.com/projectatomic/buildah;make;sudo make install

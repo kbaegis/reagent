@@ -12,9 +12,9 @@ nulllabs.vcs-ref="$GHEAD" \
 nulllabs.vendor="NullLabs" \
 nulllabs.version="beta-0.0.1" \
 nulllabs.schema-version="1.0" \
-nulllabs.docker.cmd="docker run -d -v /var/www/:/var/www/ -v /var/nfs/:/var/nfs/ --name nulllabs-nginx -p 443:443 --restart always -l nulllabs=crucible.lab:4000/oci/nginx crucible.lab:4000/oci/nginx:$DATE" \
-nulllabs.docker.cmd.devel="docker run -d -v /var/www/:/var/www/ -v /var/nfs/:/var/nfs/ --name nulllabs-nginx-dev -p 443:443 --rm --entrypoint=/bin/bash -l nulllabs=crucible.lab:4000/oci/nginx crucible.lab:4000/oci/nginx:$DATE" \
-nulllabs.docker.cmd.test="docker run -d -v /var/www/:/var/www/ -v /var/nfs/:/var/nfs/ --name nulllabs-nginx-test -p 443:443 -l nulllabs=crucible.lab:4000/oci/nginx crucible.lab:4000/oci/nginx:$DATE" \
+nulllabs.docker.cmd="docker run -d -v /var/www/:/var/www/ -v /var/nfs/:/var/nfs/ --name nulllabs-nginx -p 443:443 --restart always -l nulllabs=crucible.lab:4000/oci/nginx crucible.lab:4000/oci/nginx:latest" \
+nulllabs.docker.cmd.devel="docker run -d -v /var/www/:/var/www/ -v /var/nfs/:/var/nfs/ --name nulllabs-nginx-dev -p 443:443 --rm --entrypoint=/bin/bash -l nulllabs=crucible.lab:4000/oci/nginx crucible.lab:4000/oci/nginx:latest" \
+nulllabs.docker.cmd.test="docker run -d -v /var/www/:/var/www/ -v /var/nfs/:/var/nfs/ --name nulllabs-nginx-test -p 443:443 -l nulllabs=crucible.lab:4000/oci/nginx crucible.lab:4000/oci/nginx:latest \
 nulllabs.docker.cmd.debug="docker exec -it nulllabs-nginx bash" \
 nulllabs.docker.cmd.help="docker exec -it nulllabs-nginx /usr/local/bin/entrypoint.sh --help" \
 nulllabs.docker.params=""
@@ -35,7 +35,8 @@ ADD fpm.d/* /etc/php/fpm-php7.1/fpm.d/
 ADD --chown=nginx:nginx .x509/* /etc/ssl/nginx/
 ADD --chown=nginx:nginx .x509.nextcloud/* /etc/ssl/nextcloud/
 ADD --chown=nginx:nginx .x509.ttrss/* /etc/ssl/ttrss/
-RUN chmod 600 /etc/ssl/*/*.key.*
+RUN chmod 600 /etc/ssl/*/*.key.* \
+ && chown nginx:ngiinx /etc/ssl/*/*.key.*
 
 EXPOSE 443/tcp
 

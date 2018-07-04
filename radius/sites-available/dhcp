@@ -1,0 +1,57 @@
+server dhcp {
+ listen {
+  type = dhcp
+  ipaddr = 0.0.0.0
+  src_ipaddr = 172.22.255.254
+  port = 67
+  broadcast = yes
+ }
+ dhcp DHCP-Discover {
+  update reply {
+   DHCP-Message-Type = DHCP-Offer
+  }
+  update reply {
+   &DHCP-Domain-Name-Server = 172.22.255.254
+   &DHCP-Domain-Name-Server = 172.22.255.253
+   &DHCP-Domain-Name-Server = 172.22.255.252
+   &DHCP-Subnet-Mask = 255.255.0.0
+   &DHCP-Router-Address = 172.22.0.1
+   &DHCP-IP-Address-Lease-Time = 86400
+   &DHCP-DHCP-Server-Identifier = 172.22.255.254
+  }
+  ok
+ }
+ dhcp DHCP-Request {
+  update reply {
+   &DHCP-Message-Type = DHCP-Ack
+  }
+  update reply {
+   &DHCP-Domain-Name-Server = 172.22.255.254
+   &DHCP-Domain-Name-Server = 172.22.255.253
+   &DHCP-Domain-Name-Server = 172.22.255.252
+   &DHCP-Subnet-Mask = 255.255.0.0
+   &DHCP-Router-Address = 172.22.0.1
+   &DHCP-IP-Address-Lease-Time = 86400
+   &DHCP-DHCP-Server-Identifier = 172.22.255.254
+  }
+  ok
+ }
+ dhcp DHCP-Decline {
+  update reply {
+   &DHCP-Message-Type = DHCP-Do-Not-Respond
+  }
+ reject
+ }
+ dhcp DHCP-Inform {
+  update reply {
+   &DHCP-Message-Type = DHCP-Do-Not-Respond
+  }
+ reject
+ }
+ dhcp DHCP-Release {
+  update reply {
+   &DHCP-Message-Type = DHCP-Do-Not-Respond
+  }
+ reject
+ }
+}

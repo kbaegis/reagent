@@ -1,0 +1,67 @@
+FROM crucible.lab:4000/oci/libressl:latest
+ARG BDATE="$(date --rfc-3339=date)"
+ARG GHEAD="$(git rev-parse HEAD)"
+LABEL nulllabs.build-date="$BDATE" \
+nulllabs.name="radius" \
+nulllabs.maintainer="kbaegis@gmail.com" \
+nulllabs.description="NullLabs radius container" \
+nulllabs.usage="https://services.home/git/NullLabs/oci/src/master/radius/README.md" \
+nulllabs.url="https://services.home/git/NullLabs/oci/src/master/radius/README.md" \
+nulllabs.vcs-url="https://services.home/git/NullLabs/oci/src/master/radius/" \
+nulllabs.vcs-ref="$GHEAD" \
+nulllabs.vendor="NullLabs" \
+nulllabs.version="beta-0.0.1" \
+nulllabs.schema-version="1.0" \
+nulllabs.docker.cmd="docker run -d -p 1812:1812/udp -p 1813:1813/udp --name nulllabs-radius -l nulllabs.image=crucible.lab:4000/oci/radius crucible.lab:4000/oci/radius:latest" \
+nulllabs.docker.cmd.devel="docker run -it --name nulllabs-radius-tmp -l nulllabs.image=crucible.lab:4000/oci/radius --rm --entrypoint=/bin/bash crucible.lab:4000/oci/radius:latest" \
+nulllabs.docker.cmd.test="docker run -it --name nulllabs-radius-test -l nulllabs.image=crucible.lab:4000/oci/radius --rm --entrypoint=/bin/bash crucible.lab:4000/oci/radius:latest" \
+nulllabs.docker.cmd.debug="docker exec -it nulllabs-radius bash" \
+nulllabs.docker.cmd.help="docker exec -it nulllabs-radius /usr/local/bin/entrypoint.sh --help" \
+nulllabs.docker.params="REPO=,THREADS="
+
+RUN printf "dev-db/postgresql -server\n" >>/etc/portage/package.use/freeradius \
+ && emerge -bg sys-libs/talloc dev-util/cmake dev-db/postgresql dev-libs/libpqxx \
+ && git clone https://services.lab/git/NullLabs/libkqueue.git /tmp/libkqueue \
+ && cd /tmp/libkqueue/ \
+ && cmake -G "Unix Makefiles" -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_LIBDIR=lib $(pwd) \
+ && make \
+ && make install \
+ && git clone https://services.lab/git/NullLabs/freeradius-server.git /tmp/freeradius-server \
+ && cd /tmp/freeradius-server \
+ && git checkout v3.0.x \
+ && ./configure \
+ && make \
+ && make install \
+ && sed -i "s#^default_bits.*#default_bits = 8192#g" /usr/local/etc/raddb/certs/ca.cnf \
+ && useradd radius
+#RUN /etc/raddb/certs/bootstrap
+
+ADD --chown=radius:radius raddb/* /usr/local/etc/raddb/
+ADD --chown=radius:radius mods-available/* /usr/local/etc/raddb/mods-available/
+ADD --chown=radius:radius sites-available/* /usr/local/etc/raddb/sites-available/
+ADD --chown=radius:radius bin/* /usr/local/bin/
+#ADD --chown=radius:radius mods-config/files/* /usr/local/etc/raddb/mods-config/files/
+
+RUN ln -s /usr/local/etc/raddb/mods-available/sql.postgresql /usr/local/etc/raddb/mods-enabled/sql \
+ && ln -s /usr/local/etc/raddb/mods-available/ippool /usr/local/etc/raddb/mods-enabled/ippool \
+ && rm -r /usr/local/etc/raddb/certs/ \
+ && mkdir -p /etc/ssl/libpq-radius/ 
+ADD --chown=radius:radius .x509/* /usr/local/etc/raddb/certs/
+ADD --chown=radius:radius .x509.db/* /etc/ssl/libpq-radius/
+RUN cd /usr/local/etc/raddb/certs/ \
+ && c_rehash . \
+ && chmod -R 775 /usr/local/etc/raddb/ \
+ && chown radius:radius /usr/local/etc/raddb/ \
+ && chmod 600 /etc/ssl/*/*.key.pem \
+ && chown radius:radius /etc/ssl/*/*.key.pem
+
+RUN $HOME/.build/rsync.sh
+
+#EXPOSE 2870/tcp 6758/tcp
+EXPOSE 1812/udp 1813/udp
+
+ENTRYPOINT ["radiusd"]
+
+CMD ["-X"]
+
+HEALTHCHECK --interval=30s --timeout=5s CMD /usr/local/bin/healthcheck.sh
