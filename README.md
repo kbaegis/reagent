@@ -15,7 +15,8 @@ sudo make install
 `git submodule add -b <branch> <url> .x509`
 
 ###### Project dependencies: 
-* bash (ash/sh untested)
+* ~~bash~~
+* python3 (pybuild.py) - Refactored build script into python3
 * [buildah](https://github.com/projectatomic/buildah)
 * private docker registry (optionally secured)
 * [Gentoo Binhost](https://wiki.gentoo.org/wiki/Binary_package_guide)
