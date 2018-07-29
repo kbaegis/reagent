@@ -1,9 +1,0 @@
-implement dry-run functionality
-implement improved logging function
-troubleshoot jenkins user/path on build
-troubleshoot FAILED/PUSHED
-run as non-root user
-add timezone
-
-Eclipse CHE integration:
-docker run -it -e CHE_MULTIUSER=true -e CHE_HOST=crucible.lab -v /var/run/docker.sock:/var/run/docker.sock -v ~/.che-multiuser:/data eclipse/che:6.6.0 start

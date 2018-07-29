@@ -1,10 +1,12 @@
-#Keys
+#Generate Keys (Skip on subsequent runs)
 ceph-authtool --create-keyring /etc/ceph/ceph.mon.keyring --gen-key -n mon. --cap mon 'allow *'
 ceph-authtool --create-keyring /etc/ceph/ceph.client.admin.keyring --gen-key -n client.admin --set-uid=0 --cap mon 'allow *' --cap osd 'allow *' --cap mds 'allow *' --cap mgr 'allow *'
 ceph-authtool --create-keyring /var/lib/ceph/bootstrap-osd/ceph.keyring --gen-key -n client.bootstrap-osd --cap mon 'profile bootstrap-osd'
+ceph auth list
+
+#Import Existing Keys
 ceph-authtool /etc/ceph/ceph.mon.keyring --import-keyring /etc/ceph/ceph.client.admin.keyring
 ceph-authtool /etc/ceph/ceph.mon.keyring --import-keyring /var/lib/ceph/bootstrap-osd/ceph.keyring
-ceph auth list
 
 ##Pools
 ceph osd pool create metrics 64
@@ -25,15 +27,16 @@ ceph auth get-or-create client.gnocchi mon "allow r" osd "allow rwx pool=metrics
 ceph auth get-or-create client.kube mon 'allow r' osd 'allow class-read object_prefix rbd_children, allow rwx pool=volumes' -o ceph.client.kube.keyring
 
 #Initial Monitor
-NODE=<node1.fqdn>
+NODE=crucible.mgmt
 ln -s /etc/ceph/ceph.mon.keyring /etc/ceph/ceph.mon.$NODE.keyring
-monmaptool --create --fsid <FSID> --add ceph.mgmt <ip> /etc/ceph/ceph.initial-monmap
-monmaptool --add <node2.fqdn> <ip> /etc/ceph/ceph.initial-monmap
-ceph-mon --mkfs -i $NODE --monmap /etc/ceph/ceph.initial-monmap --keyring /etc/ceph/ceph.mon.$NODE.keyring --public-addr <ip>
-ceph-mon -i $NODE -c /etc/ceph/ceph.conf <-d (for foreground)>
+monmaptool --create --fsid 8ad364ea-b26e-4870-a580-e93b09eb7d3f --add ceph.mgmt 172.21.255.252 /etc/ceph/ceph.initial-monmap
+monmaptool --add praxis.mgmt 172.21.255.253 /etc/ceph/ceph.initial-monmap
+monmaptool --add tine.mgmt 172.21.0.3 /etc/ceph/ceph.initial-monmap
+ceph-mon --mkfs -i $NODE --monmap /etc/ceph/ceph.initial-monmap --keyring /etc/ceph/ceph.mon.$NODE.keyring --public-addr 172.21.255.252
+ceph-mon -i $NODE -c /etc/ceph/ceph.conf <-d>
 
 #Monitors
-NODE=<node2.fqdn>
+NODE=<praxis.mgmt,tine.mgmt>
 ln -s /etc/ceph/ceph.mon.keyring /etc/ceph/ceph.mon.$NODE.keyring
 ceph-mon --mkfs -i $NODE --keyring /etc/ceph/ceph.mon.$NODE.keyring
 ceph-mon -i $NODE -c /etc/ceph/ceph.conf <-d>
@@ -55,6 +58,11 @@ ceph-mgr -i $(hostname)
 hostname=$(hostname)
 mkdir -p /var/lib/ceph/mds/ceph-$hostname
 ceph auth get-or-create mds.$hostname mds 'allow ' osd 'allow *' mon 'allow rwx' > /var/lib/ceph/mds/ceph-$hostname/keyring
+
+#Docker command
+docker run --name nulllabs-ceph -dt --network host --privileged -l nulllabs=crucible.lab:4000/gentoo/ceph crucible.lab:4000/gentoo/ceph:$DATE
+#Bootstrapping
+docker run --name nulllabs-ceph-bootstrap -it --network host --privileged -v /var/lib/ceph/:/var/lib/ceph/ -l nulllabs=crucible.lab:4000/gentoo/ceph --entrypoint=/bin/bash --rm crucible.lab:4000/gentoo/ceph:$DATE
 
 #Runtime Notes
 ENTRYPOINT is tied to the health of the osd daemon, which provides no daemon socket status command. :. healtcheck should focus exclusively on the monitor, manager and MDS health.

@@ -19,6 +19,7 @@ nulllabs.docker.cmd.test="docker run -it --name nulllabs-ceph-test -l nulllabs.i
 nulllabs.docker.cmd.debug="docker exec -it nulllabs-ceph bash" \
 nulllabs.docker.cmd.help="docker exec -it nulllabs-ceph /usr/local/bin/entrypoint.sh --help" \
 nulllabs.docker.params="REPO=,THREADS="
+ENV MASTER="crucible.lab"
 
 RUN echo '=sys-cluster/ceph-12.2.5 ~amd64' >/etc/portage/package.accept_keywords \
  && printf 'dev-lang/python sqlite\ndev-libs/boost python context\nsys-cluster/ceph cephfs fuse mgr radosgw nss -ssl\napp-admin/sudo -sendmail\n' >/etc/portage/package.use/ceph \

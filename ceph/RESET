@@ -1,0 +1,90 @@
+devrun ceph
+
+#Generate Keys (Skip on subsequent runs)
+ceph-authtool --create-keyring /etc/ceph/ceph.mon.keyring --gen-key -n mon. --cap mon 'allow *'
+ceph-authtool --create-keyring /etc/ceph/ceph.client.admin.keyring --gen-key -n client.admin --set-uid=0 --cap mon 'allow *' --cap osd 'allow *' --cap mds 'allow *' --cap mgr 'allow *'
+ceph-authtool --create-keyring /var/lib/ceph/bootstrap-osd/ceph.keyring --gen-key -n client.bootstrap-osd --cap mon 'profile bootstrap-osd'
+
+##OpenStack Keys
+ceph auth get-or-create client.glance mon "allow r" osd "allow class-read object_prefix rdb_children, allow rwx pool=images" -o /etc/ceph/ceph.client.glance.keyring
+ceph auth get-or-create client.cinder mon "allow r" osd "allow class-read object_prefix rbd_children, allow rwx pool=volumes, allow rwx pool=backups, allow rx pool=images" -o /etc/ceph/ceph.client.cinder.keyring
+ceph auth get-or-create client.nova mon "allow r" osd "allow class-read object_prefix rbd_children, allow rwx pool=vms, allow rx pool=images" -o /etc/ceph/ceph.client.nova.keyring
+ceph auth get-or-create client.gnocchi mon "allow r" osd "allow rwx pool=metrics" -o /etc/ceph/ceph.client.gnocchi.keyring
+
+##Kubernetes Keys
+ceph auth get-or-create client.kube mon 'allow r' osd 'allow class-read object_prefix rbd_children, allow rwx pool=volumes' -o ceph.client.kube.keyring
+
+##Clean
+OSDHOST=$(hostname)
+lvmetad
+vgscan --mknodes
+ceph-volume lvm zap $OSDHOST/ceph
+
+#Initial Monitor
+NODE=crucible.mgmt
+ln -s /etc/ceph/ceph.mon.keyring /etc/ceph/ceph.mon.$NODE.keyring
+monmaptool --create --fsid 8ad364ea-b26e-4870-a580-e93b09eb7d3f --add ceph.mgmt 172.21.255.252 /etc/ceph/ceph.initial-monmap
+monmaptool --add praxis.mgmt 172.21.255.253 /etc/ceph/ceph.initial-monmap
+monmaptool --add tine.mgmt 172.21.0.3 /etc/ceph/ceph.initial-monmap
+ceph-mon --mkfs -i $NODE --monmap /etc/ceph/ceph.initial-monmap --keyring /etc/ceph/ceph.mon.$NODE.keyring --public-addr 172.21.255.252
+ceph-mon -i $NODE -c /etc/ceph/ceph.conf <-d>
+
+#Monitors
+NODE=<praxis.mgmt,tine.mgmt,prong.mgmt>
+ln -s /etc/ceph/ceph.mon.keyring /etc/ceph/ceph.mon.$NODE.keyring
+ceph-mon --mkfs -i $NODE --keyring /etc/ceph/ceph.mon.$NODE.keyring
+ceph-mon -i $NODE -c /etc/ceph/ceph.conf <-d>
+#ceph --admin-daemon /var/run/ceph/ceph-mon.$NODE.asok add_bootstrap_peer_hint 172.21.xxx.xxx
+
+#Import Existing Keys
+ceph-authtool /etc/ceph/ceph.mon.keyring --import-keyring /etc/ceph/ceph.client.admin.keyring
+ceph-authtool /etc/ceph/ceph.mon.keyring --import-keyring /var/lib/ceph/bootstrap-osd/ceph.keyring
+ceph auth list
+
+#OSD prep
+ceph-volume lvm prepare --bluestore --data $OSDHOST/ceph
+JSON=$(ceph-volume lvm list --format json)
+FSID=$(printf "$JSON\n"|tr '.' '_'|jq '.[]|.[].tags.ceph_osd_fsid'|tr -d \")
+ID=$(printf "$JSON\n"|tr '.' '_'|jq '.[]|.[].tags.ceph_osd_id'|tr -d \")
+ceph-volume lvm activate $ID $FSID
+ceph-osd -i $ID -d
+
+##Pools
+ceph osd pool create metrics 64
+ceph osd pool create vms 64
+ceph osd pool create images 64
+ceph osd pool create volumes 64
+ceph osd pool create default 32
+ceph osd pool create rbd 32
+ceph osd pool create backups 64
+
+#Mgr
+mkdir -p /var/lib/ceph/mgr/ceph-$(hostname)
+ceph auth get-or-create mgr.$(hostname) mon 'allow profile mgr' osd 'allow *' mds 'allow *' >/var/lib/ceph/mgr/ceph-$(hostname)/keyring
+ceph-mgr -i $(hostname)
+
+#MDS
+hostname=$(hostname)
+mkdir -p /var/lib/ceph/mds/ceph-$hostname
+ceph auth get-or-create mds.$hostname mds 'allow ' osd 'allow *' mon 'allow rwx' > /var/lib/ceph/mds/ceph-$hostname/keyring
+
+#Docker command
+docker run --name nulllabs-ceph -dt --network host --privileged -l nulllabs=crucible.lab:4000/gentoo/ceph crucible.lab:4000/gentoo/ceph:$DATE
+#Bootstrapping
+docker run --name nulllabs-ceph-bootstrap -it --network host --privileged -v /var/lib/ceph/:/var/lib/ceph/ -l nulllabs=crucible.lab:4000/gentoo/ceph --entrypoint=/bin/bash --rm crucible.lab:4000/gentoo/ceph:$DATE
+
+#Runtime Notes
+ENTRYPOINT is tied to the health of the osd daemon, which provides no daemon socket status command. :. healtcheck should focus exclusively on the monitor, manager and MDS health.
+Local configs per host should be tied to /etc/ceph/ on the host as a read-only mount and copied into the container config at runtime.
+
+##Benchmark
+rbd create test --size 1G --image-feature layering
+rbd bench --io-type write test
+rbd bench --io-type read test
+
+##Resetting cluster
+devrun ceph
+sudo rm -r /var/lib/ceph/mon/ceph-$(hostname).mgmt/
+^^ OSD zap
+^^ Initial mon
+^^ Monitors

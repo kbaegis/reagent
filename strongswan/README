@@ -1,0 +1,14 @@
+Routing for tunnels -
+
+##Strongswan server host
+sudo iptables -t filter -A FORWARD -i crucible.lab -o crucible.lab -j ACCEPT
+
+##Routers
+ip route add 172.23.25.0/24 via 172.23.255.252 dev praxis.lab src 172.23.255.253
+
+TODO:
+port to .vpn net
+shuffle to prong/tine
+
+#Prong/Tine
+sudo iptables -A FORWARD -i centurylink -o centurylink -j ACCEPT

@@ -1,3 +1,4 @@
+#FROM generic-stage3:latest <--- For bootstrapping
 FROM crucible.lab:4000/oci/gentoo-stage3-amd64-hardened:latest
 ARG BDATE="$(date --rfc-3339=date)"
 ARG GHEAD="$(git rev-parse HEAD)"
@@ -27,7 +28,7 @@ ENV PORTAGE_BINHOST="https://crucible.lab/generic" \
   PKGDIR="/usr/portage/packages/generic" \
   FEATURES="binpkg-multi-instance" \
   MAKEOPTS="-j$THREADS" \
-  EMERGE_DEFAULT_OPTS="-bg" \
+  EMERGE_DEFAULT_OPTS="-bgq --nospinner" \
   GENTOO_MIRRORS="https://crucible.lab" \
   SSL_CERT_FILE="/etc/ssl/certs/ca-certificates.crt" \
   EDITOR="/usr/bin/vi" \
@@ -41,11 +42,12 @@ RUN mkdir -p /usr/local/share/ca-certificates/ \
  && printf '[gentoo]\nlocation = /usr/portage\nsync-type = rsync\nsync-uri = rsync://crucible.mgmt/gentoo-portage\nauto-sync = yes\n' >/etc/portage/repos.conf/gentoo.conf \
  && mkdir -p /usr/portage/distfiles/ \
  && chmod 764 /usr/portage/distfiles/ \
- && chown portage:portage /usr/portage/distfiles/
+ && chown portage:portage /usr/portage/distfiles/ \
+ && touch /var/lib/portage/world
 ADD ./.x509/CA.cert.pem /usr/local/share/ca-certificates/
 RUN emaint sync -a \
  && printf 'app-misc/ca-certificates cacert\n' >/etc/portage/package.use/ca-certificates \
- && printf "EMERGE_DEFAULT_OPTS='-bg'\n" >>/etc/portage/make.conf \
+ && printf "EMERGE_DEFAULT_OPTS='-bgq --nospinner'\n" >>/etc/portage/make.conf \
  && FETCHCOMMAND='wget -t 3 -T 60 --passive-ftp --no-check-certificate -O "${DISTDIR}/${FILE}" "${URI}"' RESUMECOMMAND='wget -c -t 3 -T 60 --passive-ftp --no-check-certificate -O "${DISTDIR}/${FILE}" "${URI}"' emerge -1 app-misc/ca-certificates \
  && update-ca-certificates \
  && cat /usr/local/share/ca-certificates/CA.cert.pem >>/etc/ssl/certs/ca-certificates.crt \

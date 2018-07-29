@@ -8,6 +8,8 @@ storage:
     blobdescriptor: inmemory
   filesystem:
     rootdirectory: /opt/
+  delete:
+    enabled: true
 http:
   addr: :4000
   host: https://crucible.lab:4000

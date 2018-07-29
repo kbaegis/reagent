@@ -13,9 +13,9 @@ nulllabs.vcs-ref="$GHEAD" \
 nulllabs.vendor="NullLabs" \
 nulllabs.version="beta-0.0.1" \
 nulllabs.schema-version="1.0" \
-nulllabs.docker.cmd="docker run -d --name nulllabs-build --privileged -l nulllabs.image=crucible.lab:4000/oci/build crucible.lab:4000/oci/build:latest" \
+nulllabs.docker.cmd="docker run -it --rm --name nulllabs-build --privileged -l nulllabs.image=crucible.lab:4000/oci/build crucible.lab:4000/oci/build:latest" \
 nulllabs.docker.cmd.devel="docker run -it --name nulllabs-build-tmp --privileged -l nulllabs.image=crucible.lab:4000/oci/build --rm --entrypoint=/bin/bash crucible.lab:4000/oci/build:latest" \
-nulllabs.docker.cmd.test="docker run -it --name nulllabs-build-test --privileged - l nulllabs.image=crucible.lab:4000/oci/build --rm --entrypoint=/bin/bash crucible.lab:4000/oci/build:latest -x" \
+nulllabs.docker.cmd.test="docker run -it --name nulllabs-build-test --privileged - l nulllabs.image=crucible.lab:4000/oci/build --rm --entrypoint=/bin/bash crucible.lab:4000/oci/build:latest" \
 nulllabs.docker.cmd.debug="docker exec -it nulllabs-build bash" \
 nulllabs.docker.cmd.help="docker exec -it nulllabs-build /usr/local/bin/entrypoint.sh --help" \
 nulllabs.docker.params=""
@@ -86,4 +86,6 @@ ADD catalyst-package.use/* /etc/catalyst/portage/package.use/
 ADD catalyst-package.mask/* /etc/catalyst/porgage/package.mask/
 ADD spec/* /var/tmp/catalyst/builds/default/
 
-ENTRYPOINT ["/bin/bash"]
+#ENTRYPOINT ["/bin/bash"]
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+CMD ["-vpcib","all"]
