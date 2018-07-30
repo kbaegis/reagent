@@ -96,11 +96,14 @@ def portage_build(build_portage, verbose=False):
         commit = sp_run("sudo buildah commit --format oci --rm -q --squash " + sync_target + " " + dated_uri, verbose)
         add_latest = sp_run(" sudo buildah tag " + dated_uri + " " + latest_uri, verbose)
         if sync_target_run.call.returncode == 0 and commit.call.returncode == 0:
-            BUILT.append(dated_uri)
-            BUILT.append(latest_uri)
+            built = [dated_uri, latest_uri]
+            log.close()
+            return 0, built
         else:
-            FAILED.append(dated_uri)
-        log.close()
+            failed = [dated_uri]
+            log.close()
+            return 1, failed
+    return 0
 
 def portage_overlay(args, verbose=False):
     """Create portage overlay container to be mounted on gentoo containers"""
@@ -114,10 +117,11 @@ def portage_overlay(args, verbose=False):
         portagedir_container_mount = portagedir_container_mount_run.output[-1].rstrip()
         log.close()
         return portagedir_container_mount
+    return 0
 
-def catalyst_build(portagedir, verbose=False):
+def catalyst_build(build_catalyst, portagedir, verbose=False):
     """Build all stages from specfiles located in .stages/"""
-    if args.build_catalyst is True:
+    if build_catalyst is True:
         log = open(LOGFILE, 'a', 1)
         print(bcolors.YELLOW + bcolors.BOLD + "Building Catalyst" + bcolors.ENDC)
         log.write("Building Catalyst\n")
@@ -148,12 +152,16 @@ def catalyst_build(portagedir, verbose=False):
         if catalyst_cache_run.call.returncode == 0 and commit.call.returncode == 0:
             print(bcolors.BLUE + bcolors.BOLD + "Build of " + latest_uri + " succeeded.\n" + bcolors.ENDC)
             log.write("Build of " + latest_uri + " succeeded.\n")
-            BUILT.append(latest_uri)
+            log.close()
+            uris = [latest_uri]
+            return 0, uris
         else:
             print(bcolors.RED + bcolors.BOLD + "Build of " + latest_uri + " failed.\n" + bcolors.ENDC)
             log.write("Build of " + latest_uri + " failed\n")
-            FAILED.append(latest_uri)
-        log.close()
+            log.close()
+            uris = [latest_uri]
+            return 1, uris
+    return 0
 
 def stage3_bootstrap(build_initial, verbose=False):
     """Unpack stage3 bootstrap image inside a blank container"""
@@ -186,11 +194,14 @@ def stage3_bootstrap(build_initial, verbose=False):
         commit = sp_run("sudo buildah commit --format oci --rm -q --squash " + scratch + " " + ''.join([REGISTRY, NAMESPACE, "gentoo-stage3-amd64-hardened:", DATE]), verbose)
         sp_run("sudo buildah tag " + ''.join([REGISTRY, NAMESPACE, "gentoo-stage3-amd64-hardened:", DATE]) + " " + latest_uri, verbose)
         if copy_stage3.call.returncode == 0 and commit.call.returncode == 0:
-            BUILT.append(latest_uri)
-            BUILT.append(dated_uri)
+            uris = [latest_uri, dated_uri]
+            log.close()
+            return 0, uris
         else:
-            FAILED.append(latest_uri)
-        log.close()
+            uris = [latest_uri]
+            log.close()
+            return 1, uris
+    return 0
 
 def stage3_spawn(build_initial, verbose=False):
     """Spawn a stage3 container from image"""
@@ -212,19 +223,17 @@ def buildah_build(file, image_name, path, portagedir, verbose=False):
     log.write("Python build script called with buildah for " + file + ", " + image_name + ", " + path + "\n")
     build = sp_run("sudo buildah bud --cap-add CAP_net_raw -v " + ''.join([portagedir, ":/usr/portage/"]) + " -f " + file + " -t " + tag_dated + " -t " + tag_latest + " --build-arg " + ''.join(["BDATE=", DATE]) + " --build-arg " + ''.join(["GHEAD=", GITVERSION.decode("ascii")]) + " " + path, verbose)
     if build.call.returncode == 0:
-        BUILT.append(tag_dated)
-        BUILT.append(tag_latest)
         print(bcolors.BLUE + bcolors.BOLD + "Build of " + image_name + " succeeded!\n" + bcolors.ENDC)
         log.write("Build of " + image_name + " succeeded!\n")
+        log.close()
+        uris = [tag_dated, tag_latest]
+        return 0, uris
     else:
-        FAILED.append(tag_dated)
-        FAILED.append(tag_latest)
         print(bcolors.RED + bcolors.BOLD + "Build of " + image_name + " failed.\n" + bcolors.ENDC)
         log.write("Build failed.\n")
         log.close()
-        return 1
-    log.close()
-    return 0
+        uris = [tag_dated, tag_latest]
+        return 1, uris
 
 def initial_build(build_initial, portagedir, verbose=False):
     """Build all numbered images in the root directory of the repo"""
@@ -236,8 +245,11 @@ def initial_build(build_initial, portagedir, verbose=False):
             buildfile = os.path.join(SCRIPTPATH, filename)
             buildpath = os.path.dirname(os.path.realpath(buildfile))
             buildname = buildfile.split('.')[1]
-            buildah_build(buildfile, buildname, buildpath, portagedir, verbose)
+            status, uris = buildah_build(buildfile, buildname, buildpath, portagedir, verbose)
+            build_return_sort(status, uris)
         log.close()
+        return 0
+    return 0
 
 def project_build(build_targets, portagedir, verbose=False):
     """Call buildah_build for all buildah files matching the regex passed after -b"""
@@ -257,8 +269,11 @@ def project_build(build_targets, portagedir, verbose=False):
         for buildfile in build_list:
             buildpath = os.path.dirname(os.path.realpath(buildfile))
             buildname = os.path.basename(os.path.splitext(buildfile)[0])
-            buildah_build(buildfile, buildname, buildpath, portagedir, verbose)
+            status, uris = buildah_build(buildfile, buildname, buildpath, portagedir, verbose)
+            build_return_sort(status, uris)
         log.close()
+        return 0
+    return 0
 
 def cleanup(verbose=False):
     """Remove any remaining containers"""
@@ -270,7 +285,12 @@ def cleanup(verbose=False):
     for failure in FAILED:
         print(bcolors.RED + bcolors.BOLD + "Failed: " + failure + bcolors.ENDC)
         log.write("Failed: " + failure + "\n")
-    log.close()
+    if remove.call.returncode == 0:
+        log.close()
+        return 0
+    else:
+        log.close()
+        return 1
 
 def registry_push(images, verbose=False):
     """Push successfully built images to registry"""
@@ -279,11 +299,22 @@ def registry_push(images, verbose=False):
     log = open(LOGFILE, 'a', 1)
     for image in images:
         push_run = sp_run("sudo buildah push -q " + image + " " + ''.join(["docker://", image]), verbose)
-        if push_run.call.returncode == 0:
+        push_return_sort(push_run.call.returncode, image, log)
+    return 0
+
+def build_return_sort(code, uris):
+    for uri in uris:
+        if code == 0:
+            BUILT.append(uri)
+        if code != 0:
+            FAILED.append(uri)
+
+def push_return_sort(code, image, log):
+        if code == 0:
             print(bcolors.GREEN + bcolors.BOLD + "Successfully pushed " + image + " to registry." + bcolors.ENDC)
             log.write("Successfully pushed " + image + " to registry.\n")
             SUCCEEDED.append(image)
-        else:
+        if code != 0:
             print(bcolors.RED + bcolors.BOLD + "Pushing " + image + " to registry has failed." + bcolors.ENDC)
             log.write("Pushing " + image + " to registry has failed.\n")
             FAILED.append(image)
@@ -293,8 +324,10 @@ if __name__ == "__main__":
     args = parse_arguments(sys.argv[1:])
     portage_build = portage_build(args.build_portage, args.verbose)
     portagedir = portage_overlay(args, args.verbose)
-    catalyst_build(portagedir, args.verbose)
-    stage3_bootstrap(args.build_initial, args.verbose)
+    status, uris = catalyst_build(args.build_catalyst, portagedir, args.verbose)
+    build_return_sort(status, uris)
+    status, uris = stage3_bootstrap(args.build_initial, args.verbose)
+    build_return_sort(status, uris)
     stage3 = stage3_spawn(args.build_initial, args.verbose)
     initial_build(args.build_initial, portagedir, args.verbose)
     project_build(args.build_targets, portagedir, args.verbose)
