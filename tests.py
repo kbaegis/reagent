@@ -86,7 +86,7 @@ class nopTests(unittest.TestCase):
 class proceduralTests(unittest.TestCase):
     """All methods responsible for testing functional code paths."""
 
-    def test_buildah_build_nop(self):
+    def test_buildah_build_xpass(self):
         """Test to ensure that subprocess can run buildah to build a container."""
         tmpfile = ''.join([SCRIPTPATH,"/.test_buildah_build_nop"])
         tmpmnt = ''.join([SCRIPTPATH,"/.tmpmnt"])
@@ -120,10 +120,27 @@ class proceduralTests(unittest.TestCase):
         self.assertEqual(result, 1)
         self.assertEqual(failed, xfail_list)
 
+    def test_portage_build_run(self):
+        """Test to ensure that buildah can run the portage_build procedure."""
+        prefix = ''.join([REGISTRY, NAMESPACE])
+        built_list = [''.join([prefix, "portagedir:", DATE]), ''.join([prefix, "portagedir:latest"])]
+        result = portage_build(args.build_portage, False)
+        self.assertEqual(result[0], 0)
+        self.assertIn()
+
+    #def test_portage_build_xfail(self):
+    #    """Test to ensure that portage_build fails appropriately when sync or buildah commit fail."""
+    #    result = portage_build(args.build_portage, False)
+    #    self.assertEqual(result[0], 1)
+
     def test_portage_overlay_spawn(self):
         """Test to ensure that buidlah can spawn and mount a container."""
         mount_point = portage_overlay(nonverboseargs)
         self.assertIn('/var/lib/containers/storage/overlay', mount_point)
+
+    def test_catalyst_build_run(self):
+        """Test to ensure that buidlah can run the catalyst_build procedure."""
+        result = catalyst_build
 
     def test_cleanup_none(self):
         """Test to ensure that the cleanup function runs successfully."""
