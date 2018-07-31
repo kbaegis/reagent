@@ -33,7 +33,6 @@ PROJECT_FILES = set(BUILDAH_FILES)
 BUILT = []
 FAILED = []
 SUCCEEDED = []
-#LOGFILE = open(''.join([SCRIPTPATH, '/build.log']), 'a', 1)
 LOGFILE = ''.join([SCRIPTPATH, '/build.log'])
 
 class bcolors:
@@ -103,7 +102,6 @@ def portage_build(build_portage, verbose=False):
             failed = [dated_uri]
             log.close()
             return 1, failed
-    return 0
 
 def portage_overlay(args, verbose=False):
     """Create portage overlay container to be mounted on gentoo containers"""
@@ -117,11 +115,12 @@ def portage_overlay(args, verbose=False):
         portagedir_container_mount = portagedir_container_mount_run.output[-1].rstrip()
         log.close()
         return portagedir_container_mount
-    return 0
 
-def catalyst_build(build_catalyst, portagedir, verbose=False):
-    """Build all stages from specfiles located in .stages/"""
+def catalyst_build(build_catalyst, portagedir, verbose=False, bindpath=None):
+    """Build all stages from specfiles located in .stages/default/"""
     if build_catalyst is True:
+        if bindpath == None:
+            bindpath = ''.join([SCRIPTPATH, '/.stages/'])
         log = open(LOGFILE, 'a', 1)
         print(bcolors.YELLOW + bcolors.BOLD + "Building Catalyst" + bcolors.ENDC)
         log.write("Building Catalyst\n")
@@ -134,7 +133,7 @@ def catalyst_build(build_catalyst, portagedir, verbose=False):
         os.system("sudo mkdir -p /var/tmp/catalyst/packages/")
         os.system("sudo mkdir -p /usr/portage/distfiles")
         catalyst_bind_mount = sp_run("sudo mount --bind " + catalyst_cache_mount + " /var/tmp/catalyst/packages/", verbose)
-        build_bind_mount = sp_run("sudo mount --bind " + ''.join([SCRIPTPATH, "/.stages"]) + " /var/tmp/catalyst/builds/", verbose)
+        build_bind_mount = sp_run("sudo mount --bind " + bindpath + " /var/tmp/catalyst/builds/", verbose)
         if not os.path.isfile("/var/tmp/catalyst/builds/hardened/stage3-amd64-hardened-latest.tar.bz2"):
             print(bcolors.YELLOW + bcolors.BOLD + "Stage3 not found. Downloading from " + STAGE3URL + "\n" + bcolors.ENDC)
             log.write("Stage3 not found. Downloading from " + STAGE3URL + "\n")
@@ -154,14 +153,15 @@ def catalyst_build(build_catalyst, portagedir, verbose=False):
             log.write("Build of " + latest_uri + " succeeded.\n")
             log.close()
             uris = [latest_uri]
-            return 0, uris
+            build_return_sort(0, uris)
+            return 0
         else:
             print(bcolors.RED + bcolors.BOLD + "Build of " + latest_uri + " failed.\n" + bcolors.ENDC)
             log.write("Build of " + latest_uri + " failed\n")
             log.close()
             uris = [latest_uri]
-            return 1, uris
-    return 0
+            build_return_sort(1, uris)
+            return 1
 
 def stage3_bootstrap(build_initial, verbose=False):
     """Unpack stage3 bootstrap image inside a blank container"""
@@ -196,12 +196,13 @@ def stage3_bootstrap(build_initial, verbose=False):
         if copy_stage3.call.returncode == 0 and commit.call.returncode == 0:
             uris = [latest_uri, dated_uri]
             log.close()
-            return 0, uris
+            build_return_sort(0, uris)
+            return 0
         else:
             uris = [latest_uri]
             log.close()
-            return 1, uris
-    return 0
+            build_return_sort(1, uris)
+            return 1
 
 def stage3_spawn(build_initial, verbose=False):
     """Spawn a stage3 container from image"""
@@ -213,7 +214,6 @@ def stage3_spawn(build_initial, verbose=False):
         stage3 = stage3_run.output[-1].rstrip()
         log.close()
         return stage3
-    return 0
 
 def buildah_build(file, image_name, path, portagedir, verbose=False):
     """Build a buildah file"""
@@ -221,15 +221,19 @@ def buildah_build(file, image_name, path, portagedir, verbose=False):
     tag_dated = ''.join([REGISTRY, NAMESPACE, image_name, ":", DATE])
     tag_latest = ''.join([REGISTRY, NAMESPACE, image_name, ":latest"])
     log.write("Python build script called with buildah for " + file + ", " + image_name + ", " + path + "\n")
+    log.flush()
+    log.close()
     build = sp_run("sudo buildah bud --cap-add CAP_net_raw -v " + ''.join([portagedir, ":/usr/portage/"]) + " -f " + file + " -t " + tag_dated + " -t " + tag_latest + " --build-arg " + ''.join(["BDATE=", DATE]) + " --build-arg " + ''.join(["GHEAD=", GITVERSION.decode("ascii")]) + " " + path, verbose)
     if build.call.returncode == 0:
         print(bcolors.BLUE + bcolors.BOLD + "Build of " + image_name + " succeeded!\n" + bcolors.ENDC)
+        log = open(LOGFILE, 'a', 1)
         log.write("Build of " + image_name + " succeeded!\n")
         log.close()
         uris = [tag_dated, tag_latest]
         return 0, uris
     else:
         print(bcolors.RED + bcolors.BOLD + "Build of " + image_name + " failed.\n" + bcolors.ENDC)
+        log = open(LOGFILE, 'a', 1)
         log.write("Build failed.\n")
         log.close()
         uris = [tag_dated, tag_latest]
@@ -248,8 +252,7 @@ def initial_build(build_initial, portagedir, verbose=False):
             status, uris = buildah_build(buildfile, buildname, buildpath, portagedir, verbose)
             build_return_sort(status, uris)
         log.close()
-        return 0
-    return 0
+        return status
 
 def project_build(build_targets, portagedir, verbose=False):
     """Call buildah_build for all buildah files matching the regex passed after -b"""
@@ -273,7 +276,6 @@ def project_build(build_targets, portagedir, verbose=False):
             build_return_sort(status, uris)
         log.close()
         return 0
-    return 0
 
 def cleanup(verbose=False):
     """Remove any remaining containers"""
@@ -300,7 +302,6 @@ def registry_push(images, verbose=False):
     for image in images:
         push_run = sp_run("sudo buildah push -q " + image + " " + ''.join(["docker://", image]), verbose)
         push_return_sort(push_run.call.returncode, image, log)
-    return 0
 
 def build_return_sort(code, uris):
     for uri in uris:
@@ -324,10 +325,8 @@ if __name__ == "__main__":
     args = parse_arguments(sys.argv[1:])
     portage_build = portage_build(args.build_portage, args.verbose)
     portagedir = portage_overlay(args, args.verbose)
-    status, uris = catalyst_build(args.build_catalyst, portagedir, args.verbose)
-    build_return_sort(status, uris)
-    status, uris = stage3_bootstrap(args.build_initial, args.verbose)
-    build_return_sort(status, uris)
+    catalyst_build(args.build_catalyst, portagedir, args.verbose)
+    stage3_bootstrap(args.build_initial, args.verbose)
     stage3 = stage3_spawn(args.build_initial, args.verbose)
     initial_build(args.build_initial, portagedir, args.verbose)
     project_build(args.build_targets, portagedir, args.verbose)
