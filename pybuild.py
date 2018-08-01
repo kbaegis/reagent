@@ -30,9 +30,6 @@ for root, dirnames, filenames in os.walk(SCRIPTPATH):
         if re.match(r'.*buildah$', filename) and filename not in EXCLUDE_FILES:
             BUILDAH_FILES.append(os.path.splitext(os.path.relpath(os.path.join(root, filename), SCRIPTPATH))[0])
 PROJECT_FILES = set(BUILDAH_FILES)
-BUILT = []
-FAILED = []
-SUCCEEDED = []
 LOGFILE = ''.join([SCRIPTPATH, '/build.log'])
 
 class bcolors:
@@ -48,10 +45,71 @@ class bcolors:
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
 
-class SubprocessReturn(object):
+class subprocessReturn(object):
     def __init__(self, call, output):
         self.call = call
         self.output = output
+
+class imageList(object):
+    def __init__(self):
+        self.images = {}
+        self.base_uri = ''.join([REGISTRY, NAMESPACE])
+        self.date = DATE
+
+    def addBuilt(self, name, build_status):
+        lname = name + ":latest"
+        dname = name + ":" + self.date
+        uri = self.base_uri + name
+        self.images[lname] = {'uri': uri, 'tag': 'latest', 'build_status': build_status, 'push_status': ''}
+        self.images[dname] = {'uri': uri, 'tag': self.date, 'build_status': build_status, 'push_status': ''}
+    
+    def updatePushed(self, name, push_status):
+        self.images[name].update({'push_status': push_status})
+
+    def statusList(self):
+        failure = bcolors.RED + bcolors.BOLD
+        success = bcolors.GREEN + bcolors.BOLD
+        end = bcolors.ENDC
+        for name, value in self.images.items():
+            uri = ''.join([images.images[name]['uri'], ':',images.images[name]['tag']])
+            build_status = images.images[name]['build_status']
+            push_status = images.images[name]['push_status']
+            if build_status == 0 and push_status == 0:
+                print(success, "Image: ", uri, " - pushed", end)
+            if build_status > 0:
+                print(failure, "Image: ", uri, " - failed build", end)
+            if build_status == 0 and push_status > 0:
+                print(failure, "Image: ", uri, " - failed push", end)
+
+    def listBuilt(self):
+        returnlist = []
+        for name, value in self.images.items():
+            uri = ''.join([images.images[name]['uri'], ':', images.images[name]['tag']])
+            build_status = images.images[name]['build_status']
+            push_status = images.images[name]['push_status']
+            if build_status == 0 and push_status != 0:
+                returnlist.append(uri)
+        return returnlist
+
+    def listFailed(self):
+        returnlist = []
+        for name, value in self.images.items():
+            uri = ''.join([images.images[name]['uri'], ':', images.images[name]['tag']])
+            build_status = images.images[name]['build_status']
+            push_status = images.images[name]['push_status']
+            if build_status > 0 or push_status > 0:
+                returnlist.append(uri)
+        return returnlist
+
+    def listPushed(self):
+        returnlist = []
+        for name, value in self.images.items():
+            uri = ''.join([images.images[name]['uri'], ':', images.images[name]['tag']])
+            build_status = images.images[name]['build_status']
+            push_status = images.images[name]['push_status']
+            if build_status == 0 and push_status == 0:
+                returnlist.append(uri)
+        return returnlist
 
 def parse_arguments(arguments):
     """Parse arguments from cli-invocation"""
@@ -64,7 +122,7 @@ def parse_arguments(arguments):
     args = parser.parse_args(arguments)
     return args
 
-def sp_run(command, verbose=False):
+def sp_run(command, verbose = False):
     output_list = []
     with open(LOGFILE, 'a', 1) as log:
         subprocess_call = subprocess.Popen(shlex.split(command), stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
@@ -77,16 +135,21 @@ def sp_run(command, verbose=False):
                 log.flush()
                 output_list.append(line)
             subprocess_call.wait()
-    return SubprocessReturn(subprocess_call, output_list)
+    return subprocessReturn(subprocess_call, output_list)
 
-def portage_build(build_portage, verbose=False):
+def portage_build(build_portage, images, verbose = False):
     """Build portage container from host snapshot"""
     if build_portage is True:
         log = open(LOGFILE, 'a', 1)
         print(bcolors.YELLOW + bcolors.BOLD + "Building portage" + bcolors.ENDC)
         log.write("Building portage\n")
-        dated_uri = ''.join([REGISTRY, NAMESPACE, "portagedir:", DATE])
-        latest_uri = ''.join([REGISTRY, NAMESPACE, "portagedir:latest"])
+        name = "portagedir"
+        latest_nametag = name + ":latest"
+        dated_nametag = name + ":" + DATE
+        uri_base = ''.join([REGISTRY, NAMESPACE])
+        uri = ''.join([REGISTRY, NAMESPACE, name])
+        latest_uri = ''.join([uri_base, latest_nametag])
+        dated_uri = ''.join([uri_base, dated_nametag])
         sync_target_run = sp_run("sudo buildah from " + latest_uri, verbose)
         sync_target = sync_target_run.output[-1].rstrip()
         sync_target_mount_run = sp_run("sudo buildah mount " + sync_target, verbose)
@@ -95,15 +158,15 @@ def portage_build(build_portage, verbose=False):
         commit = sp_run("sudo buildah commit --format oci --rm -q --squash " + sync_target + " " + dated_uri, verbose)
         add_latest = sp_run(" sudo buildah tag " + dated_uri + " " + latest_uri, verbose)
         if sync_target_run.call.returncode == 0 and commit.call.returncode == 0:
-            built = [dated_uri, latest_uri]
+            images.addBuilt(name, 0)
             log.close()
-            return 0, built
+            return 0
         else:
-            failed = [dated_uri]
+            images.addBuilt(name, 1)
             log.close()
-            return 1, failed
+            return 1
 
-def portage_overlay(args, verbose=False):
+def portage_overlay(args, verbose = False):
     """Create portage overlay container to be mounted on gentoo containers"""
     if args.build_catalyst is True or args.build_initial is True or args.build_targets:
         log = open(LOGFILE, 'a', 1)
@@ -116,7 +179,7 @@ def portage_overlay(args, verbose=False):
         log.close()
         return portagedir_container_mount
 
-def catalyst_build(build_catalyst, portagedir, verbose=False, bindpath=None):
+def catalyst_build(build_catalyst, images, portagedir, bindpath = None, verbose = False):
     """Build all stages from specfiles located in .stages/default/"""
     if build_catalyst is True:
         if bindpath == None:
@@ -124,7 +187,14 @@ def catalyst_build(build_catalyst, portagedir, verbose=False, bindpath=None):
         log = open(LOGFILE, 'a', 1)
         print(bcolors.YELLOW + bcolors.BOLD + "Building Catalyst" + bcolors.ENDC)
         log.write("Building Catalyst\n")
-        latest_uri = ''.join([REGISTRY, NAMESPACE, "catalyst-cache:latest"])
+        name = "catalyst-cache"
+        latest_nametag = name + ":latest"
+        uri_base = ''.join([REGISTRY, NAMESPACE])
+        dated_nametag = name + ":" + DATE
+        uri = ''.join([REGISTRY, NAMESPACE, name])
+        latest_uri = ''.join([uri_base, latest_nametag])
+        uri = ''.join([REGISTRY, NAMESPACE, name])
+        latest_uri = ''.join([uri, ":latest"])
         emaint = sp_run("emaint -a sync", verbose)
         catalyst_cache_run = sp_run("sudo buildah from " + latest_uri, verbose)
         catalyst_cache = catalyst_cache_run.output[-1].rstrip()
@@ -152,25 +222,25 @@ def catalyst_build(build_catalyst, portagedir, verbose=False, bindpath=None):
             print(bcolors.BLUE + bcolors.BOLD + "Build of " + latest_uri + " succeeded.\n" + bcolors.ENDC)
             log.write("Build of " + latest_uri + " succeeded.\n")
             log.close()
-            uris = [latest_uri]
-            build_return_sort(0, uris)
+            images.addBuilt(name, 0)
             return 0
         else:
             print(bcolors.RED + bcolors.BOLD + "Build of " + latest_uri + " failed.\n" + bcolors.ENDC)
             log.write("Build of " + latest_uri + " failed\n")
             log.close()
-            uris = [latest_uri]
-            build_return_sort(1, uris)
+            images.addBuilt(name, 1)
             return 1
 
-def stage3_bootstrap(build_initial, verbose=False):
+def stage3_bootstrap(build_initial, images, verbose = False):
     """Unpack stage3 bootstrap image inside a blank container"""
     if build_initial is True:
         log = open(LOGFILE, 'a', 1)
+        name = "gentoo-stage3-amd64-hardened"
         print(bcolors.YELLOW + bcolors.BOLD + "Bootstrapping stage3" + bcolors.ENDC)
         log.write("Bootstrapping stage3\n")
-        dated_uri = ''.join([REGISTRY, NAMESPACE, "gentoo-stage3-amd64-hardened:", DATE])
-        latest_uri = ''.join([REGISTRY, NAMESPACE, "gentoo-stage3-amd64-hardened:latest"])
+        uri = ''.join([REGISTRY, NAMESPACE, name])
+        dated_uri = ''.join([uri, ":", DATE])
+        latest_uri = ''.join([uri, ":latest"])
         scratch_run = sp_run("sudo buildah from scratch", verbose)
         scratch = scratch_run.output[-1].rstrip()
         scratch_mount_run = sp_run("sudo buildah mount " + scratch, verbose)
@@ -189,22 +259,20 @@ def stage3_bootstrap(build_initial, verbose=False):
         timezonefile.flush()
         timezonefile.close()
         sp_run("sudo buildah run " + scratch + " mkdir -p /usr/portage", verbose)
-        sp_run("sudo buildah config --cmd /bin/bash --label " + ''.join([REGISTRY, NAMESPACE, "gentoo-stage3-amd64-hardened"]) + " " + scratch, verbose)
+        sp_run("sudo buildah config --cmd /bin/bash --label " + ''.join([REGISTRY, NAMESPACE, name]) + " " + scratch, verbose)
         sp_run("sudo buildah umount " + scratch, verbose)
-        commit = sp_run("sudo buildah commit --format oci --rm -q --squash " + scratch + " " + ''.join([REGISTRY, NAMESPACE, "gentoo-stage3-amd64-hardened:", DATE]), verbose)
-        sp_run("sudo buildah tag " + ''.join([REGISTRY, NAMESPACE, "gentoo-stage3-amd64-hardened:", DATE]) + " " + latest_uri, verbose)
+        commit = sp_run("sudo buildah commit --format oci --rm -q --squash " + scratch + " " + ''.join([REGISTRY, NAMESPACE, name, ":", DATE]), verbose)
+        sp_run("sudo buildah tag " + ''.join([REGISTRY, NAMESPACE, name, ":", DATE]) + " " + latest_uri, verbose)
         if copy_stage3.call.returncode == 0 and commit.call.returncode == 0:
-            uris = [latest_uri, dated_uri]
             log.close()
-            build_return_sort(0, uris)
+            images.addBuilt(name, 0)
             return 0
         else:
-            uris = [latest_uri]
             log.close()
-            build_return_sort(1, uris)
+            images.addBuilt(name, 1)
             return 1
 
-def stage3_spawn(build_initial, verbose=False):
+def stage3_spawn(build_initial, verbose = False):
     """Spawn a stage3 container from image"""
     if build_initial is True:
         log = open(LOGFILE, 'a', 1)
@@ -215,31 +283,32 @@ def stage3_spawn(build_initial, verbose=False):
         log.close()
         return stage3
 
-def buildah_build(file, image_name, path, portagedir, verbose=False):
+def buildah_build(file, image_name, path, images, portagedir, verbose = False):
     """Build a buildah file"""
     log = open(LOGFILE, 'a', 1)
-    tag_dated = ''.join([REGISTRY, NAMESPACE, image_name, ":", DATE])
-    tag_latest = ''.join([REGISTRY, NAMESPACE, image_name, ":latest"])
+    uri = ''.join([REGISTRY, NAMESPACE, image_name])
+    uri_latest = ''.join([uri, ":latest"])
+    uri_dated = ''.join([uri, ":", DATE])
     log.write("Python build script called with buildah for " + file + ", " + image_name + ", " + path + "\n")
     log.flush()
     log.close()
-    build = sp_run("sudo buildah bud --cap-add CAP_net_raw -v " + ''.join([portagedir, ":/usr/portage/"]) + " -f " + file + " -t " + tag_dated + " -t " + tag_latest + " --build-arg " + ''.join(["BDATE=", DATE]) + " --build-arg " + ''.join(["GHEAD=", GITVERSION.decode("ascii")]) + " " + path, verbose)
+    build = sp_run("sudo buildah bud --cap-add CAP_net_raw -v " + ''.join([portagedir, ":/usr/portage/"]) + " -f " + file + " -t " + uri_dated + " -t " + uri_latest + " --build-arg " + ''.join(["BDATE=", DATE]) + " --build-arg " + ''.join(["GHEAD=", GITVERSION.decode("ascii")]) + " " + path, verbose)
     if build.call.returncode == 0:
         print(bcolors.BLUE + bcolors.BOLD + "Build of " + image_name + " succeeded!\n" + bcolors.ENDC)
         log = open(LOGFILE, 'a', 1)
         log.write("Build of " + image_name + " succeeded!\n")
         log.close()
-        uris = [tag_dated, tag_latest]
-        return 0, uris
+        images.addBuilt(image_name, 0)
+        return 0
     else:
         print(bcolors.RED + bcolors.BOLD + "Build of " + image_name + " failed.\n" + bcolors.ENDC)
         log = open(LOGFILE, 'a', 1)
         log.write("Build failed.\n")
         log.close()
-        uris = [tag_dated, tag_latest]
-        return 1, uris
+        images.addBuilt(image_name, 1)
+        return 1
 
-def initial_build(build_initial, portagedir, verbose=False):
+def initial_build(build_initial, images, portagedir, verbose = False):
     """Build all numbered images in the root directory of the repo"""
     if build_initial is True:
         log = open(LOGFILE, 'a', 1)
@@ -249,12 +318,11 @@ def initial_build(build_initial, portagedir, verbose=False):
             buildfile = os.path.join(SCRIPTPATH, filename)
             buildpath = os.path.dirname(os.path.realpath(buildfile))
             buildname = buildfile.split('.')[1]
-            status, uris = buildah_build(buildfile, buildname, buildpath, portagedir, verbose)
-            build_return_sort(status, uris)
+            buildah_build(buildfile, buildname, buildpath, images, portagedir, verbose)
         log.close()
-        return status
+        return 0
 
-def project_build(build_targets, portagedir, verbose=False):
+def project_build(build_targets, images, portagedir, verbose = False):
     """Call buildah_build for all buildah files matching the regex passed after -b"""
     if build_targets:
         log = open(LOGFILE, 'a', 1)
@@ -272,21 +340,15 @@ def project_build(build_targets, portagedir, verbose=False):
         for buildfile in build_list:
             buildpath = os.path.dirname(os.path.realpath(buildfile))
             buildname = os.path.basename(os.path.splitext(buildfile)[0])
-            status, uris = buildah_build(buildfile, buildname, buildpath, portagedir, verbose)
-            build_return_sort(status, uris)
+            buildah_build(buildfile, buildname, buildpath, images, portagedir, verbose)
         log.close()
         return 0
+    return 0
 
-def cleanup(verbose=False):
+def cleanup(verbose = False):
     """Remove any remaining containers"""
     log = open(LOGFILE, 'a', 1)
     remove = sp_run("sudo buildah rm -a", verbose)
-    for success in SUCCEEDED:
-        print(bcolors.GREEN + bcolors.BOLD + "Succeeded: " + success + bcolors.ENDC)
-        log.write("Succeeded: " + success + "\n")
-    for failure in FAILED:
-        print(bcolors.RED + bcolors.BOLD + "Failed: " + failure + bcolors.ENDC)
-        log.write("Failed: " + failure + "\n")
     if remove.call.returncode == 0:
         log.close()
         return 0
@@ -294,41 +356,29 @@ def cleanup(verbose=False):
         log.close()
         return 1
 
-def registry_push(images, verbose=False):
+def registry_push(uris, verbose = False):
     """Push successfully built images to registry"""
-    success = []
-    failure = []
     log = open(LOGFILE, 'a', 1)
-    for image in images:
+    for image in uris:
         push_run = sp_run("sudo buildah push -q " + image + " " + ''.join(["docker://", image]), verbose)
-        push_return_sort(push_run.call.returncode, image, log)
-
-def build_return_sort(code, uris):
-    for uri in uris:
-        if code == 0:
-            BUILT.append(uri)
-        if code != 0:
-            FAILED.append(uri)
-
-def push_return_sort(code, image, log):
-        if code == 0:
-            print(bcolors.GREEN + bcolors.BOLD + "Successfully pushed " + image + " to registry." + bcolors.ENDC)
-            log.write("Successfully pushed " + image + " to registry.\n")
-            SUCCEEDED.append(image)
-        if code != 0:
-            print(bcolors.RED + bcolors.BOLD + "Pushing " + image + " to registry has failed." + bcolors.ENDC)
-            log.write("Pushing " + image + " to registry has failed.\n")
-            FAILED.append(image)
+        name = image.rsplit(sep='/')[2]
+        images.updatePushed(name, push_run.call.returncode)
+        if push_run.call.returncode == 0:
+            print(bcolors.GREEN + bcolors.BOLD + "Successfully pushed " + image + bcolors.ENDC)
+        if push_run.call.returncode == 1:
+            print(bcolors.RED + bcolors.BOLD + "Failed to push " + image + bcolors.ENDC)
 
 ##Main
 if __name__ == "__main__":
-    args = parse_arguments(sys.argv[1:])
-    portage_build = portage_build(args.build_portage, args.verbose)
-    portagedir = portage_overlay(args, args.verbose)
-    catalyst_build(args.build_catalyst, portagedir, args.verbose)
-    stage3_bootstrap(args.build_initial, args.verbose)
-    stage3 = stage3_spawn(args.build_initial, args.verbose)
-    initial_build(args.build_initial, portagedir, args.verbose)
-    project_build(args.build_targets, portagedir, args.verbose)
-    registry_push(BUILT, args.verbose)
+    args = parse_arguments(sys.argv[-1])
+    images = imageList()
+    portage_build = portage_build(args.build_portage, images, verbose = args.verbose)
+    portagedir = portage_overlay(args, verbose = args.verbose)
+    catalyst_build(args.build_catalyst, images, portagedir, verbose = args.verbose)
+    stage3_bootstrap(args.build_initial, images, verbose = args.verbose)
+    stage3 = stage3_spawn(args.build_initial, verbose = args.verbose)
+    initial_build(args.build_initial, images, portagedir, verbose = args.verbose)
+    project_build(args.build_targets, images, portagedir, verbose = args.verbose)
+    registry_push(images.listBuilt(), verbose = args.verbose)
+    images.statusList()
     cleanup(args.verbose)

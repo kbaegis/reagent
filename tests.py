@@ -4,7 +4,7 @@ import sys
 import os
 import time
 import unittest
-from pybuild import bcolors, parse_arguments, sp_run, portage_build, portage_overlay, catalyst_build, stage3_bootstrap, stage3_spawn, buildah_build, initial_build, project_build, cleanup, registry_push, parse_arguments, build_return_sort, push_return_sort
+from pybuild import bcolors, parse_arguments, sp_run, portage_build, portage_overlay, catalyst_build, stage3_bootstrap, stage3_spawn, buildah_build, initial_build, project_build, cleanup, registry_push, parse_arguments, imageList
 
 SCRIPTPATH = os.path.dirname(os.path.realpath(__file__))
 LOGFILE = ''.join([SCRIPTPATH, '/log.unittest'])
@@ -13,7 +13,6 @@ NAMESPACE = "/oci/"
 TESTIMAGE = "alpine:edge"
 DATE = time.strftime("%Y-%m-%d")
 CATALYST_BIND_PATH = ''.join([SCRIPTPATH, '/.tmpcatalyst'])
-BUILT = []
 
 class unitTests(unittest.TestCase):
     """All tests responsible for testing the internal components of individual functions."""
@@ -44,17 +43,8 @@ class unitTests(unittest.TestCase):
         self.assertEqual(read_test.call.returncode, 0)
         self.assertEqual(rm_test.call.returncode, 0)
 
-    #def test_build_return_sort_failure(self):
-    #    """Test to ensure that build_return_sort handles failures appropriately."""
-    
-    #def test_build_return_sort_built(self):
-    #    """Test to ensure that build_return_sort handles successful builds appropriately."""
-    
-    #def test_push_return_sort_failure(self):
-    #    """Test to ensure that push_return_sort handles failures appropriately."""
-
-    #def test_push_return_sort_succeeded(self):
-    #    """Test to ensure that push_return_sort handles successes appropriately."""
+    #def test_imageList(self):
+    #    """Test to ensure that imageList methods function appropriately."""
 
 class nopTests(unittest.TestCase):
     """All tests responsible for testing functions disabled by arguments."""
@@ -99,17 +89,17 @@ class nopTests(unittest.TestCase):
 
 class proceduralTests(unittest.TestCase):
     """All methods responsible for testing functional code paths."""
-    def setUp(self):
-        BUILT = []
-        FAILED = []
-        SUCCEEDED = []
+    #def setUp(self):
+    #    images = imageList()
 
     def test_portage_build_xpass(self):
         """Test to ensure that buildah can run the portage_build procedure."""
+        foo = imageList()
         prefix = ''.join([REGISTRY, NAMESPACE])
         built_list = [''.join([prefix, "portagedir:", DATE]), ''.join([prefix, "portagedir:latest"])]
-        result = portage_build(verboseargs.build_portage, False)
-        self.assertEqual(result[0], 0)
+        result = portage_build(verboseargs.build_portage, foo, verbose = False)
+        foo.statusList()
+        self.assertEqual(result, 0)
         #self.assertIn()
 
     #def test_portage_build_xfail(self):
@@ -124,6 +114,7 @@ class proceduralTests(unittest.TestCase):
 
     def test_catalyst_build_xpass(self):
         """Test to ensure that buidlah can run the catalyst_build procedure and download the STAGE3URL configured in pybuild.py."""
+        bar = imageList()
         tmpdir = ''.join([SCRIPTPATH, '/.tmpcatalyst'])
         specdir = ''.join([SCRIPTPATH, '/.tmpcatalyst/default'])
         #tmpspec = ''.join([specdir, '/test.spec'])
@@ -136,15 +127,17 @@ class proceduralTests(unittest.TestCase):
         #    spec.flush()
         #    spec.close()
         #    result, uris = catalyst_build(verboseargs.build_catalyst, tmpdir, False, tmpdir)
-        result = catalyst_build(nonverboseargs.build_catalyst, tmpdir, False, tmpdir)
+        #result = catalyst_build(nonverboseargs.build_catalyst, tmpdir, False, tmpdir)
+        result = catalyst_build(nonverboseargs.build_catalyst, bar, tmpdir, bindpath = tmpdir, verbose = nonverboseargs.verbose)
         #os.remove(tmpspec)
         #os.rmdir(specdir)
         #os.rmdir(tmpdir)
         os.system("rm -rf " + tmpdir)
         prefix = ''.join([REGISTRY, NAMESPACE])
         xuris = [''.join([prefix, "catalyst-cache:latest"])]
+        bar.statusList()
         self.assertEqual(result, 0)
-        #self.assertEqual(pybuild.BUILT, xuris)
+        #self.assertEqual(images.listBuilt(), xuris)
 
     #def test_catalyst_build_xfail(self):
     #    """Test to ensure that catalyst_build fails appropriately when the cache fails to mount or commit fails."""
@@ -160,6 +153,7 @@ class proceduralTests(unittest.TestCase):
 
     def test_buildah_build_xpass(self):
         """Test to ensure that subprocess can run buildah to build a container."""
+        images = imageList()
         tmpfile = ''.join([SCRIPTPATH,"/.test_buildah_build_nop"])
         tmpmnt = ''.join([SCRIPTPATH,"/.tmpmnt"])
         image = ''.join([REGISTRY, NAMESPACE, TESTIMAGE])
@@ -167,16 +161,18 @@ class proceduralTests(unittest.TestCase):
         with open(tmpfile, 'w') as bud:
             bud.write("FROM " + image + "\nRUN /bin/true\n")
             bud.flush()
-            result, built = buildah_build(tmpfile, "tmp", SCRIPTPATH, tmpmnt, nonverboseargs.verbose)
+            result = buildah_build(tmpfile, "tmp", SCRIPTPATH, images, tmpmnt, verbose = nonverboseargs.verbose)
         os.remove(tmpfile)
         os.rmdir(tmpmnt)
         prefix = ''.join([REGISTRY, NAMESPACE])
         built_list = [''.join([prefix, "tmp:", DATE]), ''.join([prefix, "tmp:latest"])]
+        images.statusList()
         self.assertEqual(result, 0)
-        self.assertEqual(built, built_list)
+        #self.assertEqual(built, built_list)
 
     def test_buildah_build_xfail(self):
         """Test to ensure that subprocess can run buildah and fails appropriately."""
+        images = imageList()
         tmpfile = ''.join([SCRIPTPATH,"/.test_buildah_build_xfail"])
         tmpmnt = ''.join([SCRIPTPATH,"/.tmpmnt"])
         image = ''.join([REGISTRY, NAMESPACE, TESTIMAGE])
@@ -184,11 +180,12 @@ class proceduralTests(unittest.TestCase):
         with open(tmpfile, 'w') as bud:
             bud.write("FROM " + image + "\nRUN /bin/false\n")
             bud.flush()
-        result, failed = buildah_build(tmpfile, "tmp", SCRIPTPATH, tmpmnt, nonverboseargs.verbose)
+        result = buildah_build(tmpfile, "tmp", SCRIPTPATH, images, tmpmnt, verbose = nonverboseargs.verbose)
         os.remove(tmpfile)
         os.rmdir(tmpmnt)
         #prefix = ''.join([REGISTRY, NAMESPACE])
         #xfail_list = [''.join([prefix, "tmp:", DATE]), ''.join([prefix, "tmp:latest"])]
+        images.statusList()
         self.assertEqual(result, 1)
         #self.assertEqual(failed, xfail_list)
 
@@ -231,6 +228,11 @@ if __name__ == '__main__':
     nopargs = parse_arguments(arguments)
     arguments = ["-p", "-c", "-i", "-b", "all"]
     nonverboseargs = parse_arguments(arguments)
+    images = imageList()
+    try:
+        os.system("rm -rf " + ''.join([SCRIPTPATH, "/.tmp*"]))
+    except OSError:
+        pass
     runner = unittest.TextTestRunner(verbosity=2, warnings='always')
     print(bcolors.YELLOW + bcolors.BOLD +"Running codepath tests for disabled functions.\n" + bcolors.ENDC)
     runner.run(nopSuite())
