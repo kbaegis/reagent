@@ -1,5 +1,9 @@
 #!/usr/bin/python3
 
+"""
+Test cases for gentoo buildah toolchain.
+"""
+
 import sys
 import os
 import time
@@ -43,8 +47,40 @@ class unitTests(unittest.TestCase):
         self.assertEqual(read_test.call.returncode, 0)
         self.assertEqual(rm_test.call.returncode, 0)
 
-    #def test_imageList(self):
-    #    """Test to ensure that imageList methods function appropriately."""
+    def test_imageList(self):
+        """Test to ensure that imageList methods function appropriately."""
+        image_utest = imageList()
+        date = image_utest.date
+        base_uri = image_utest.base_uri
+        image_utest.addBuilt('pushed', 0)
+        image_utest.updatePushed('pushed', 0)
+        image_utest.addBuilt('push_failed', 0)
+        image_utest.updatePushed('push_failed', 1)
+        image_utest.addBuilt('built', 0)
+        image_utest.addBuilt('failed', 1)
+        plist = image_utest.listPushed()
+        xp = ['pushed']
+        xplist = []
+        for name in xp:
+            xplist.append(''.join([base_uri, name, ':latest']))
+            xplist.append(''.join([base_uri, name, ':', date]))
+        blist = image_utest.listBuilt()
+        xb = ['pushed', 'push_failed', 'built']
+        xblist = []
+        for name in xb:
+            xblist.append(''.join([base_uri, name, ':latest']))
+            xblist.append(''.join([base_uri, name, ':', date]))
+        flist = image_utest.listFailed()
+        xf = ['push_failed', 'failed']
+        xflist = []
+        for name in xf:
+            xflist.append(''.join([base_uri, name, ':latest']))
+            xflist.append(''.join([base_uri, name, ':', date]))
+        self.assertEqual(date, DATE)
+        self.assertEqual(base_uri, ''.join([REGISTRY, NAMESPACE]))
+        self.assertEqual(plist, xplist)
+        self.assertEqual(blist, xblist)
+        self.assertEqual(flist, xflist)
 
 class nopTests(unittest.TestCase):
     """All tests responsible for testing functions disabled by arguments."""
@@ -89,16 +125,15 @@ class nopTests(unittest.TestCase):
 
 class proceduralTests(unittest.TestCase):
     """All methods responsible for testing functional code paths."""
-    #def setUp(self):
-    #    images = imageList()
+    def setUp(self):
+        images = imageList()
 
     def test_portage_build_xpass(self):
         """Test to ensure that buildah can run the portage_build procedure."""
-        foo = imageList()
         prefix = ''.join([REGISTRY, NAMESPACE])
         built_list = [''.join([prefix, "portagedir:", DATE]), ''.join([prefix, "portagedir:latest"])]
-        result = portage_build(verboseargs.build_portage, foo, verbose = False)
-        foo.statusList()
+        result = portage_build(verboseargs.build_portage, images, verbose = False)
+        status = images.statusList()
         self.assertEqual(result, 0)
         #self.assertIn()
 
@@ -114,28 +149,27 @@ class proceduralTests(unittest.TestCase):
 
     def test_catalyst_build_xpass(self):
         """Test to ensure that buidlah can run the catalyst_build procedure and download the STAGE3URL configured in pybuild.py."""
-        bar = imageList()
         tmpdir = ''.join([SCRIPTPATH, '/.tmpcatalyst'])
-        specdir = ''.join([SCRIPTPATH, '/.tmpcatalyst/default'])
-        #tmpspec = ''.join([specdir, '/test.spec'])
-        stage3path = ''.join([SCRIPTPATH, '.stages/builds/hardened/stage3-amd64-hardened-latest.tar.bz2'])
+        specdir = ''.join([tmpdir, '/default'])
+        stagedir = ''.join([tmpdir, '/builds/hardened'])
+        tmpspec = ''.join([specdir, '/test.spec'])
+        stage3path = ''.join([stagedir, '/stage3-amd64-hardened-latest.tar.bz2'])
         os.makedirs(specdir)
+        os.makedirs(stagedir)
+        spec = open(stage3path, 'w')
+        spec.close()
         if os.path.isfile(stage3path):
             os.remove(stage3path)
-        #with open(tmpspec, 'w') as spec:
-        #    spec.write('subarch: amd64\ntarget: stage3\nversion_stamp: hardened-latest\nrel_type: hardened\nprofile: default/linux/amd64/17.0/hardened\nsnapshot: latest\nsource_subpath: hardened/stage2-amd64-hardened-latest\ncompression_mode: bzip2\ndecompressor_search_order: tar pixz xz lbzip2 bzip2 gzip\nportage_confdir: /etc/catalyst/portage/')
-        #    spec.flush()
-        #    spec.close()
-        #    result, uris = catalyst_build(verboseargs.build_catalyst, tmpdir, False, tmpdir)
-        #result = catalyst_build(nonverboseargs.build_catalyst, tmpdir, False, tmpdir)
-        result = catalyst_build(nonverboseargs.build_catalyst, bar, tmpdir, bindpath = tmpdir, verbose = nonverboseargs.verbose)
-        #os.remove(tmpspec)
-        #os.rmdir(specdir)
-        #os.rmdir(tmpdir)
+        with open(tmpspec, 'w') as spec:
+            spec.write('subarch: amd64\ntarget: stage3\nversion_stamp: hardened-latest\nrel_type: hardened\nprofile: default/linux/amd64/17.0/hardened\nsnapshot: latest\nsource_subpath: hardened/stage2-amd64-hardened-latest\ncompression_mode: bzip2\ndecompressor_search_order: tar pixz xz lbzip2 bzip2 gzip\nportage_confdir: /etc/catalyst/portage/')
+            spec.flush()
+            spec.close()
+            result, uris = catalyst_build(verboseargs.build_catalyst, tmpdir, False, tmpdir)
+        result = catalyst_build(nonverboseargs.build_catalyst, images, tmpdir, bindpath = tmpdir, verbose = nonverboseargs.verbose)
         os.system("rm -rf " + tmpdir)
         prefix = ''.join([REGISTRY, NAMESPACE])
         xuris = [''.join([prefix, "catalyst-cache:latest"])]
-        bar.statusList()
+        status = images.statusList()
         self.assertEqual(result, 0)
         #self.assertEqual(images.listBuilt(), xuris)
 
@@ -153,7 +187,6 @@ class proceduralTests(unittest.TestCase):
 
     def test_buildah_build_xpass(self):
         """Test to ensure that subprocess can run buildah to build a container."""
-        images = imageList()
         tmpfile = ''.join([SCRIPTPATH,"/.test_buildah_build_nop"])
         tmpmnt = ''.join([SCRIPTPATH,"/.tmpmnt"])
         image = ''.join([REGISTRY, NAMESPACE, TESTIMAGE])
@@ -166,13 +199,12 @@ class proceduralTests(unittest.TestCase):
         os.rmdir(tmpmnt)
         prefix = ''.join([REGISTRY, NAMESPACE])
         built_list = [''.join([prefix, "tmp:", DATE]), ''.join([prefix, "tmp:latest"])]
-        images.statusList()
+        status = images.statusList()
         self.assertEqual(result, 0)
         #self.assertEqual(built, built_list)
 
     def test_buildah_build_xfail(self):
         """Test to ensure that subprocess can run buildah and fails appropriately."""
-        images = imageList()
         tmpfile = ''.join([SCRIPTPATH,"/.test_buildah_build_xfail"])
         tmpmnt = ''.join([SCRIPTPATH,"/.tmpmnt"])
         image = ''.join([REGISTRY, NAMESPACE, TESTIMAGE])
@@ -185,7 +217,7 @@ class proceduralTests(unittest.TestCase):
         os.rmdir(tmpmnt)
         #prefix = ''.join([REGISTRY, NAMESPACE])
         #xfail_list = [''.join([prefix, "tmp:", DATE]), ''.join([prefix, "tmp:latest"])]
-        images.statusList()
+        status = images.statusList()
         self.assertEqual(result, 1)
         #self.assertEqual(failed, xfail_list)
 

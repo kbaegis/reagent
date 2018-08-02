@@ -60,43 +60,52 @@ class imageList(object):
         lname = name + ":latest"
         dname = name + ":" + self.date
         uri = self.base_uri + name
-        self.images[lname] = {'uri': uri, 'tag': 'latest', 'build_status': build_status, 'push_status': ''}
-        self.images[dname] = {'uri': uri, 'tag': self.date, 'build_status': build_status, 'push_status': ''}
+        self.images[lname] = {'uri': uri, 'tag': 'latest', 'build_status': build_status, 'push_status': -1}
+        self.images[dname] = {'uri': uri, 'tag': self.date, 'build_status': build_status, 'push_status': -1}
     
     def updatePushed(self, name, push_status):
-        self.images[name].update({'push_status': push_status})
+        self.images[''.join([name, ':latest'])].update({'push_status': push_status})
+        self.images[''.join([name, ':', self.date])].update({'push_status': push_status})
 
     def statusList(self):
         failure = bcolors.RED + bcolors.BOLD
         success = bcolors.GREEN + bcolors.BOLD
+        built = bcolors.GREY + bcolors.BOLD
         end = bcolors.ENDC
+        returnlist = []
         for name, value in self.images.items():
-            uri = ''.join([images.images[name]['uri'], ':',images.images[name]['tag']])
-            build_status = images.images[name]['build_status']
-            push_status = images.images[name]['push_status']
+            uri = ''.join([self.images[name]['uri'], ':',self.images[name]['tag']])
+            build_status = self.images[name]['build_status']
+            push_status = self.images[name]['push_status']
             if build_status == 0 and push_status == 0:
-                print(success, "Image: ", uri, " - pushed", end)
+                string = ''.join([success, "Image: ", uri, " - pushed", end])
+                returnlist.append(string)
+            if build_status == 0 and push_status == -1:
+                string = ''.join([built, "Image: ", uri, " - built, unpushed", end])
+                returnlist.append(string)
             if build_status > 0:
-                print(failure, "Image: ", uri, " - failed build", end)
+                string = ''.join([failure, "Image: ", uri, " - failed build", end])
+                returnlist.append(string)
             if build_status == 0 and push_status > 0:
-                print(failure, "Image: ", uri, " - failed push", end)
+                string = ''.join([failure, "Image: ", uri, " - failed push", end])
+                returnlist.append(string)
+        return returnlist
 
     def listBuilt(self):
         returnlist = []
         for name, value in self.images.items():
-            uri = ''.join([images.images[name]['uri'], ':', images.images[name]['tag']])
-            build_status = images.images[name]['build_status']
-            push_status = images.images[name]['push_status']
-            if build_status == 0 and push_status != 0:
+            uri = ''.join([self.images[name]['uri'], ':', self.images[name]['tag']])
+            build_status = self.images[name]['build_status']
+            if build_status == 0:
                 returnlist.append(uri)
         return returnlist
 
     def listFailed(self):
         returnlist = []
         for name, value in self.images.items():
-            uri = ''.join([images.images[name]['uri'], ':', images.images[name]['tag']])
-            build_status = images.images[name]['build_status']
-            push_status = images.images[name]['push_status']
+            uri = ''.join([self.images[name]['uri'], ':', self.images[name]['tag']])
+            build_status = self.images[name]['build_status']
+            push_status = self.images[name]['push_status']
             if build_status > 0 or push_status > 0:
                 returnlist.append(uri)
         return returnlist
@@ -104,9 +113,9 @@ class imageList(object):
     def listPushed(self):
         returnlist = []
         for name, value in self.images.items():
-            uri = ''.join([images.images[name]['uri'], ':', images.images[name]['tag']])
-            build_status = images.images[name]['build_status']
-            push_status = images.images[name]['push_status']
+            uri = ''.join([self.images[name]['uri'], ':', self.images[name]['tag']])
+            build_status = self.images[name]['build_status']
+            push_status = self.images[name]['push_status']
             if build_status == 0 and push_status == 0:
                 returnlist.append(uri)
         return returnlist
@@ -126,7 +135,8 @@ def sp_run(command, verbose = False):
     output_list = []
     with open(LOGFILE, 'a', 1) as log:
         subprocess_call = subprocess.Popen(shlex.split(command), stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-        with io.TextIOWrapper(subprocess_call.stdout, encoding="ascii", errors='ignore', write_through=True) as wrapper:  
+        #with io.TextIOWrapper(subprocess_call.stdout, encoding="ascii", errors='ignore', write_through=True) as wrapper:  
+        with io.TextIOWrapper(subprocess_call.stdout, encoding="ascii", errors='ignore') as wrapper:  
             for line in wrapper:
                 if verbose == True:
                     colorizedline = (bcolors.GREY + line + bcolors.ENDC)
@@ -356,12 +366,13 @@ def cleanup(verbose = False):
         log.close()
         return 1
 
-def registry_push(uris, verbose = False):
+def registry_push(images, verbose = False):
     """Push successfully built images to registry"""
     log = open(LOGFILE, 'a', 1)
-    for image in uris:
+    for image in images.listBuilt():
         push_run = sp_run("sudo buildah push -q " + image + " " + ''.join(["docker://", image]), verbose)
-        name = image.rsplit(sep='/')[2]
+        nametag = image.rsplit(sep='/')[-1]
+        name = ''.join(nametag.rsplit(sep=':')[:-1])
         images.updatePushed(name, push_run.call.returncode)
         if push_run.call.returncode == 0:
             print(bcolors.GREEN + bcolors.BOLD + "Successfully pushed " + image + bcolors.ENDC)
@@ -370,7 +381,7 @@ def registry_push(uris, verbose = False):
 
 ##Main
 if __name__ == "__main__":
-    args = parse_arguments(sys.argv[-1])
+    args = parse_arguments(sys.argv[1:])
     images = imageList()
     portage_build = portage_build(args.build_portage, images, verbose = args.verbose)
     portagedir = portage_overlay(args, verbose = args.verbose)
@@ -379,6 +390,8 @@ if __name__ == "__main__":
     stage3 = stage3_spawn(args.build_initial, verbose = args.verbose)
     initial_build(args.build_initial, images, portagedir, verbose = args.verbose)
     project_build(args.build_targets, images, portagedir, verbose = args.verbose)
-    registry_push(images.listBuilt(), verbose = args.verbose)
-    images.statusList()
+    registry_push(images, verbose = args.verbose)
+    status = images.statusList()
+    for line in status:
+        print(line)
     cleanup(args.verbose)
