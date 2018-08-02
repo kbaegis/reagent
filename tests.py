@@ -156,10 +156,10 @@ class proceduralTests(unittest.TestCase):
         stage3path = ''.join([stagedir, '/stage3-amd64-hardened-latest.tar.bz2'])
         os.makedirs(specdir)
         os.makedirs(stagedir)
-        spec = open(stage3path, 'w')
-        spec.close()
         if os.path.isfile(stage3path):
             os.remove(stage3path)
+        stage3 = open(stage3path, 'w')
+        stage3.close()
         with open(tmpspec, 'w') as spec:
             spec.write('subarch: amd64\ntarget: stage3\nversion_stamp: hardened-latest\nrel_type: hardened\nprofile: default/linux/amd64/17.0/hardened\nsnapshot: latest\nsource_subpath: hardened/stage2-amd64-hardened-latest\ncompression_mode: bzip2\ndecompressor_search_order: tar pixz xz lbzip2 bzip2 gzip\nportage_confdir: /etc/catalyst/portage/')
             spec.flush()
