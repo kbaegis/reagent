@@ -161,6 +161,9 @@ class proceduralTests(unittest.TestCase):
             os.remove(stage3path)
         stage3 = open(stage3path, 'w')
         stage3.close()
+	print("DEBUG: catalyst_build passed values portagedir, bindpath: ")
+	print(cimages)
+	print(type(cimages))
         with open(tmpspec, 'w') as spec:
             spec.write('subarch: amd64\ntarget: stage3\nversion_stamp: hardened-latest\nrel_type: hardened\nprofile: default/linux/amd64/17.0/hardened\nsnapshot: latest\nsource_subpath: hardened/stage2-amd64-hardened-latest\ncompression_mode: bzip2\ndecompressor_search_order: tar pixz xz lbzip2 bzip2 gzip\nportage_confdir: /etc/catalyst/portage/')
             spec.flush()
