@@ -97,10 +97,7 @@ class nopTests(unittest.TestCase):
 
     def test_catalyst_build_nop(self):
         """Test to ensure that catalyst_build doesn't do anything if -c isn't called."""
-        code = catalyst_build(nopargs.build_catalyst, '', True)
-        self.assertEqual(code, None)
-
-    def test_stage3_bootstrap_nop(self):
+        code = catalyst_build(nopargs.build_catalyst, '', True) self.assertEqual(code, None) def test_stage3_bootstrap_nop(self):
         """Test to ensure that stage3_bootstrap doesn't do anything if -i isn't called."""
         code = stage3_bootstrap(nopargs.build_initial, True)
         self.assertEqual(code, None)
@@ -150,6 +147,9 @@ class proceduralTests(unittest.TestCase):
     def test_catalyst_build_xpass(self):
         """Test to ensure that buidlah can run the catalyst_build procedure and download the STAGE3URL configured in pybuild.py."""
         cimages = imageList()
+        for line in imageList:
+            print(line)
+        status = cimages.statusList()
         tmpdir = ''.join([SCRIPTPATH, '/.tmpcatalyst'])
         specdir = ''.join([tmpdir, '/default'])
         stagedir = ''.join([tmpdir, '/builds/hardened'])
@@ -172,7 +172,9 @@ class proceduralTests(unittest.TestCase):
         os.system("rm -rf " + tmpdir)
         prefix = ''.join([REGISTRY, NAMESPACE])
         xuris = [''.join([prefix, "catalyst-cache:latest"])]
-        status = cimages.statusList()
+        cimages = imageList()
+        for line in imageList:
+            print(line)
         self.assertEqual(result, 0)
         #self.assertEqual(images.listBuilt(), xuris)
 
