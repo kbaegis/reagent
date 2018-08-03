@@ -149,6 +149,7 @@ class proceduralTests(unittest.TestCase):
 
     def test_catalyst_build_xpass(self):
         """Test to ensure that buidlah can run the catalyst_build procedure and download the STAGE3URL configured in pybuild.py."""
+        cimages = imageList()
         tmpdir = ''.join([SCRIPTPATH, '/.tmpcatalyst'])
         specdir = ''.join([tmpdir, '/default'])
         stagedir = ''.join([tmpdir, '/builds/hardened'])
@@ -164,11 +165,11 @@ class proceduralTests(unittest.TestCase):
             spec.write('subarch: amd64\ntarget: stage3\nversion_stamp: hardened-latest\nrel_type: hardened\nprofile: default/linux/amd64/17.0/hardened\nsnapshot: latest\nsource_subpath: hardened/stage2-amd64-hardened-latest\ncompression_mode: bzip2\ndecompressor_search_order: tar pixz xz lbzip2 bzip2 gzip\nportage_confdir: /etc/catalyst/portage/')
             spec.flush()
             spec.close()
-            result = catalyst_build(nonverboseargs.build_catalyst, images, tmpdir, bindpath = tmpdir, verbose = nonverboseargs.verbose)
+            result = catalyst_build(nonverboseargs.build_catalyst, cimages, tmpdir, bindpath = tmpdir, verbose = nonverboseargs.verbose)
         os.system("rm -rf " + tmpdir)
         prefix = ''.join([REGISTRY, NAMESPACE])
         xuris = [''.join([prefix, "catalyst-cache:latest"])]
-        status = images.statusList()
+        status = cimages.statusList()
         self.assertEqual(result, 0)
         #self.assertEqual(images.listBuilt(), xuris)
 
