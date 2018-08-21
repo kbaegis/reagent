@@ -7,11 +7,12 @@ This python program can be leveraged to create a CI/CD pipeline for gentoo image
 import argparse
 import sys
 import os
-import subprocess
 import io
-import re
 import time
+import subprocess
+import re
 import shlex
+import signal
 
 #Please adjust to fit your environment
 SCRIPTPATH = os.path.dirname(os.path.realpath(__file__))
@@ -21,7 +22,7 @@ GITVERSION = subprocess.check_output(["git", "-C", SCRIPTPATH, "rev-parse", "HEA
 REGISTRY = "crucible.lab:4000" #point to your registry
 NAMESPACE = "/oci/" #adjust as needed
 STAGE3URL = "https://crucible.lab/distfiles/stage3-amd64-hardened-latest.tar.bz2" #point to any valid stage3
-INITIAL_FILES = [entry for entry in os.listdir(SCRIPTPATH) if re.match(r'[0-9]+.*\.buildah$', entry)]
+INITIAL_FILES = [entry for entry in os.listdir(SCRIPTPATH) if re.match(r'[0-9]+.*\.buildah$', entry)] #matches any file with a numeric prefix and a .buildah suffix from the root directory of the script
 INITIAL_FILES.sort()
 EXCLUDE_FILES = set(INITIAL_FILES)
 BUILDAH_FILES = []
@@ -29,21 +30,18 @@ for root, dirnames, filenames in os.walk(SCRIPTPATH):
     for filename in filenames:
         if re.match(r'.*buildah$', filename) and filename not in EXCLUDE_FILES:
             BUILDAH_FILES.append(os.path.splitext(os.path.relpath(os.path.join(root, filename), SCRIPTPATH))[0])
-PROJECT_FILES = set(BUILDAH_FILES)
-LOGFILE = ''.join([SCRIPTPATH, '/build.log'])
+PROJECT_FILES = set(BUILDAH_FILES) #a set of *..buildah files located under the root directory and excludes INITIAL_FILES
+LOGFILE = ''.join([SCRIPTPATH, '/build.log']) #logfile used throughout
 
 class bcolors:
-    HEADER = '\033[95m'
-    BLUE = '\033[94m'
-    GREEN = '\033[92m'
-    GREY = '\033[0;37m'
-    YELLOW = '\033[33m'
-    WARNING = '\033[93m'
-    RED = '\033[31m'
-    FAIL = '\033[91m'
-    ENDC = '\033[0m'
-    BOLD = '\033[1m'
-    UNDERLINE = '\033[4m'
+    ISUCCESS = '\033[94m' #intermediate success; blue
+    SUCCESS = '\033[92m' #success; green
+    VOUT = '\033[0;37m' #Verbose output; White/Grey
+    PROGRESS = '\033[33m' #Function progress; Yellow
+    FAILURE = '\033[31m' #Failure; Red
+    ENDC = '\033[0m' #Color Reset
+    BOLD = '\033[1m' #Bold
+    UNDERLINE = '\033[4m' #Underline
 
 class subprocessReturn(object):
     def __init__(self, call, output):
@@ -51,6 +49,9 @@ class subprocessReturn(object):
         self.output = output
 
 class imageList(object):
+    """
+    Class tracking images in various build states.
+    """
     def __init__(self):
         self.images = {}
         self.base_uri = ''.join([REGISTRY, NAMESPACE])
@@ -68,9 +69,9 @@ class imageList(object):
         self.images[''.join([name, ':', self.date])].update({'push_status': push_status})
 
     def statusList(self):
-        failure = bcolors.RED + bcolors.BOLD
-        success = bcolors.GREEN + bcolors.BOLD
-        built = bcolors.GREY + bcolors.BOLD
+        failure = bcolors.FAILURE + bcolors.BOLD
+        success = bcolors.SUCCESS + bcolors.BOLD
+        built = bcolors.VOUT + bcolors.BOLD
         end = bcolors.ENDC
         returnlist = []
         for name, value in self.images.items():
@@ -89,6 +90,9 @@ class imageList(object):
             if build_status == 0 and push_status > 0:
                 string = ''.join([failure, "Image: ", uri, " - failed push", end])
                 returnlist.append(string)
+        if not returnlist:
+            string = built + "No images built." + end
+            returnlist.append(string)
         return returnlist
 
     def listBuilt(self):
@@ -135,15 +139,19 @@ def sp_run(command, verbose = False):
     output_list = []
     with open(LOGFILE, 'a', 1) as log:
         subprocess_call = subprocess.Popen(shlex.split(command), stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-        #with io.TextIOWrapper(subprocess_call.stdout, encoding="ascii", errors='ignore', write_through=True) as wrapper:  
-        with io.TextIOWrapper(subprocess_call.stdout, encoding="ascii", errors='ignore') as wrapper:  
+        #with io.TextIOWrapper(subprocess_call.stdout, write_through = True, encoding = "ascii", errors = 'ignore') as wrapper:  
+        with io.TextIOWrapper(subprocess_call.stdout, line_buffering = True, encoding = "ascii", errors = 'ignore') as wrapper:  
             for line in wrapper:
-                if verbose == True:
-                    colorizedline = (bcolors.GREY + line + bcolors.ENDC)
-                    print(colorizedline, end="")
-                log.write(line)
-                log.flush()
-                output_list.append(line)
+                try:
+                    if verbose == True:
+                        colorizedline = (bcolors.VOUT + line + bcolors.ENDC)
+                        print(colorizedline, end="")
+                    log.write(line)
+                    log.flush()
+                    output_list.append(line)
+                except BlockingIOError:
+                    tb = sys.exc_info()[2]
+                    pass
             subprocess_call.wait()
     return subprocessReturn(subprocess_call, output_list)
 
@@ -151,7 +159,7 @@ def portage_build(build_portage, images, verbose = False):
     """Build portage container from host snapshot"""
     if build_portage is True:
         log = open(LOGFILE, 'a', 1)
-        print(bcolors.YELLOW + bcolors.BOLD + "Building portage" + bcolors.ENDC)
+        print(bcolors.PROGRESS + bcolors.BOLD + "Building portage" + bcolors.ENDC)
         log.write("Building portage\n")
         name = "portagedir"
         latest_nametag = name + ":latest"
@@ -180,7 +188,7 @@ def portage_overlay(args, verbose = False):
     """Create portage overlay container to be mounted on gentoo containers"""
     if args.build_catalyst is True or args.build_initial is True or args.build_targets:
         log = open(LOGFILE, 'a', 1)
-        print(bcolors.YELLOW + bcolors.BOLD + "Spawning portage" + bcolors.ENDC)
+        print(bcolors.PROGRESS + bcolors.BOLD + "Spawning portage" + bcolors.ENDC)
         log.write("Spawning portage\n")
         portagedir_container_run = sp_run("sudo buildah from " + ''.join([REGISTRY, NAMESPACE, "portagedir:latest"]), verbose)
         portagedir_container = portagedir_container_run.output[-1].rstrip()
@@ -195,16 +203,14 @@ def catalyst_build(build_catalyst, images, portagedir, bindpath = None, verbose 
         if bindpath == None:
             bindpath = ''.join([SCRIPTPATH, '/.stages/'])
         log = open(LOGFILE, 'a', 1)
-        print(bcolors.YELLOW + bcolors.BOLD + "Building Catalyst" + bcolors.ENDC)
+        print(bcolors.PROGRESS + bcolors.BOLD + "Building Catalyst" + bcolors.ENDC)
         log.write("Building Catalyst\n")
         name = "catalyst-cache"
         latest_nametag = name + ":latest"
-        uri_base = ''.join([REGISTRY, NAMESPACE])
         dated_nametag = name + ":" + DATE
-        uri = ''.join([REGISTRY, NAMESPACE, name])
+        uri_base = ''.join([REGISTRY, NAMESPACE])
         latest_uri = ''.join([uri_base, latest_nametag])
-        uri = ''.join([REGISTRY, NAMESPACE, name])
-        latest_uri = ''.join([uri, ":latest"])
+        dated_uri = ''.join([uri_base, dated_nametag])
         emaint = sp_run("emaint -a sync", verbose)
         catalyst_cache_run = sp_run("sudo buildah from " + latest_uri, verbose)
         catalyst_cache = catalyst_cache_run.output[-1].rstrip()
@@ -215,27 +221,28 @@ def catalyst_build(build_catalyst, images, portagedir, bindpath = None, verbose 
         catalyst_bind_mount = sp_run("sudo mount --bind " + catalyst_cache_mount + " /var/tmp/catalyst/packages/", verbose)
         build_bind_mount = sp_run("sudo mount --bind " + bindpath + " /var/tmp/catalyst/builds/", verbose)
         if not os.path.isfile("/var/tmp/catalyst/builds/hardened/stage3-amd64-hardened-latest.tar.bz2"):
-            print(bcolors.YELLOW + bcolors.BOLD + "Stage3 not found. Downloading from " + STAGE3URL + "\n" + bcolors.ENDC)
+            print(bcolors.PROGRESS + bcolors.BOLD + "Stage3 not found. Downloading from " + STAGE3URL + bcolors.ENDC)
             log.write("Stage3 not found. Downloading from " + STAGE3URL + "\n")
             os.system("sudo mkdir -p /var/tmp/catalyst/builds/hardened/")
             curl = sp_run("sudo curl -s " + STAGE3URL + " -o /var/tmp/catalyst/builds/hardened/stage3-amd64-hardened-latest.tar.bz2", verbose)
         specfile_list = [entry for entry in os.listdir("/var/tmp/catalyst/builds/default/") if re.match(r'.*\.spec$', entry)]
         snapshot = sp_run("sudo catalyst -s latest", verbose)
         for specfile in specfile_list:
-            print(bcolors.YELLOW + bcolors.BOLD + "Catalyst build using specfile: " + specfile + bcolors.ENDC)
+            print(bcolors.PROGRESS + bcolors.BOLD + "Catalyst build using specfile: " + specfile + bcolors.ENDC)
             log.write("Catalyst build using specfile: " + specfile + "\n")
             build = sp_run("sudo catalyst -f " + ''.join(["/var/tmp/catalyst/builds/default/", specfile]), verbose)
         catalyst_bind_umount = sp_run("sudo umount /var/tmp/catalyst/packages/", verbose)
         build_bind_umount = sp_run("sudo umount /var/tmp/catalyst/builds/", verbose)
-        commit = sp_run("sudo buildah commit --format oci --rm -q --squash " + catalyst_cache + " " + latest_uri, verbose)
+        commit = sp_run("sudo buildah commit --format oci --rm -q --squash " + catalyst_cache + " " + dated_uri, verbose)
+        sp_run("sudo buildah tag " + dated_uri + " " + latest_uri, verbose)
         if catalyst_cache_run.call.returncode == 0 and commit.call.returncode == 0:
-            print(bcolors.BLUE + bcolors.BOLD + "Build of " + latest_uri + " succeeded.\n" + bcolors.ENDC)
+            print(bcolors.ISUCCESS + bcolors.BOLD + "Build of " + latest_uri + " succeeded." + bcolors.ENDC)
             log.write("Build of " + latest_uri + " succeeded.\n")
             log.close()
             images.addBuilt(name, 0)
             return 0
         else:
-            print(bcolors.RED + bcolors.BOLD + "Build of " + latest_uri + " failed.\n" + bcolors.ENDC)
+            print(bcolors.FAILURE + bcolors.BOLD + "Build of " + latest_uri + " failed." + bcolors.ENDC)
             log.write("Build of " + latest_uri + " failed\n")
             log.close()
             images.addBuilt(name, 1)
@@ -246,7 +253,7 @@ def stage3_bootstrap(build_initial, images, verbose = False):
     if build_initial is True:
         log = open(LOGFILE, 'a', 1)
         name = "gentoo-stage3-amd64-hardened"
-        print(bcolors.YELLOW + bcolors.BOLD + "Bootstrapping stage3" + bcolors.ENDC)
+        print(bcolors.PROGRESS + bcolors.BOLD + "Bootstrapping stage3" + bcolors.ENDC)
         log.write("Bootstrapping stage3\n")
         uri = ''.join([REGISTRY, NAMESPACE, name])
         dated_uri = ''.join([uri, ":", DATE])
@@ -256,7 +263,7 @@ def stage3_bootstrap(build_initial, images, verbose = False):
         scratch_mount_run = sp_run("sudo buildah mount " + scratch, verbose)
         scratch_mount = scratch_mount_run.output[-1].rstrip()
         if not os.path.isfile(''.join([SCRIPTPATH, "/.stages/hardened/stage3-amd64-hardened-latest.tar.bz2"])):
-            print(bcolors.YELLOW + bcolors.BOLD + "Stage3 not found. Downloading from " + STAGE3URL + bcolors.ENDC)
+            print(bcolors.PROGRESS + bcolors.BOLD + "Stage3 not found. Downloading from " + STAGE3URL + bcolors.ENDC)
             log.write("Stage3 not found. Downloading from " + STAGE3URL + "\n")
             curllocation = ''.join(["sudo mkdir -p ", SCRIPTPATH, "/.stages/hardened"])
             print(curllocation)
@@ -286,7 +293,7 @@ def stage3_spawn(build_initial, verbose = False):
     """Spawn a stage3 container from image"""
     if build_initial is True:
         log = open(LOGFILE, 'a', 1)
-        print(bcolors.YELLOW + bcolors.BOLD + "Spawning stage3" + bcolors.ENDC)
+        print(bcolors.PROGRESS + bcolors.BOLD + "Spawning stage3" + bcolors.ENDC)
         log.write("Spawning stage3\n")
         stage3_run = sp_run("sudo buildah from " + ''.join([REGISTRY, NAMESPACE, "gentoo-stage3-amd64-hardened:latest"]), verbose)
         stage3 = stage3_run.output[-1].rstrip()
@@ -304,16 +311,16 @@ def buildah_build(file, image_name, path, images, portagedir, verbose = False):
     log.close()
     build = sp_run("sudo buildah bud --cap-add CAP_net_raw -v " + ''.join([portagedir, ":/usr/portage/"]) + " -f " + file + " -t " + uri_dated + " -t " + uri_latest + " --build-arg " + ''.join(["BDATE=", DATE]) + " --build-arg " + ''.join(["GHEAD=", GITVERSION.decode("ascii")]) + " " + path, verbose)
     if build.call.returncode == 0:
-        print(bcolors.BLUE + bcolors.BOLD + "Build of " + image_name + " succeeded!\n" + bcolors.ENDC)
+        print(bcolors.ISUCCESS + bcolors.BOLD + "Build of " + image_name + " succeeded!" + bcolors.ENDC)
         log = open(LOGFILE, 'a', 1)
         log.write("Build of " + image_name + " succeeded!\n")
         log.close()
         images.addBuilt(image_name, 0)
         return 0
     else:
-        print(bcolors.RED + bcolors.BOLD + "Build of " + image_name + " failed.\n" + bcolors.ENDC)
+        print(bcolors.FAILURE + bcolors.BOLD + "Build of " + image_name + " failed." + bcolors.ENDC)
         log = open(LOGFILE, 'a', 1)
-        log.write("Build failed.\n")
+        log.write("Build of " + image_name + " failed.\n")
         log.close()
         images.addBuilt(image_name, 1)
         return 1
@@ -322,7 +329,7 @@ def initial_build(build_initial, images, portagedir, verbose = False):
     """Build all numbered images in the root directory of the repo"""
     if build_initial is True:
         log = open(LOGFILE, 'a', 1)
-        print(bcolors.YELLOW + bcolors.BOLD + "Initial images" + bcolors.ENDC)
+        print(bcolors.PROGRESS + bcolors.BOLD + "Initial images" + bcolors.ENDC)
         log.write("Initial images\n")
         for filename in INITIAL_FILES:
             buildfile = os.path.join(SCRIPTPATH, filename)
@@ -336,7 +343,7 @@ def project_build(build_targets, images, portagedir, verbose = False):
     """Call buildah_build for all buildah files matching the regex passed after -b"""
     if build_targets:
         log = open(LOGFILE, 'a', 1)
-        print(bcolors.YELLOW + bcolors.BOLD + "Project images" + bcolors.ENDC)
+        print(bcolors.PROGRESS + bcolors.BOLD + "Project images" + bcolors.ENDC)
         log.write("Project images\n")
         build_list = []
         search_expressions = []
@@ -375,9 +382,11 @@ def registry_push(images, verbose = False):
         name = ''.join(nametag.rsplit(sep=':')[:-1])
         images.updatePushed(name, push_run.call.returncode)
         if push_run.call.returncode == 0:
-            print(bcolors.GREEN + bcolors.BOLD + "Successfully pushed " + image + bcolors.ENDC)
+            print(bcolors.SUCCESS + bcolors.BOLD + "Successfully pushed " + image + bcolors.ENDC)
         if push_run.call.returncode == 1:
-            print(bcolors.RED + bcolors.BOLD + "Failed to push " + image + bcolors.ENDC)
+            print(bcolors.FAILURE + bcolors.BOLD + "Failed to push " + image + bcolors.ENDC)
+    log.close()
+    return 0
 
 ##Main
 if __name__ == "__main__":
@@ -392,6 +401,10 @@ if __name__ == "__main__":
     project_build(args.build_targets, images, portagedir, verbose = args.verbose)
     registry_push(images, verbose = args.verbose)
     status = images.statusList()
-    for line in status:
-        print(line)
+    if args.verbose == True:
+        for line in status:
+            print(line)
+    with open(LOGFILE, 'a', 1) as log:
+        for line in status:
+           log.write(line + "\n")
     cleanup(args.verbose)

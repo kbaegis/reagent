@@ -34,6 +34,7 @@ RUN mkdir $HOME/.go \
  && printf 'FEATURES="-usersandbox"\n' >> /etc/portage/env/nousersandbox.conf \
  && printf 'dev-lang/go nousersandbox.conf\n' >> /etc/portage/package.env \
  && emerge dev-lang/go \
- && $HOME/.build/rsync.sh
+ && $HOME/.build/rsync.sh \
+ && emerge --depclean --with-bdeps=n
 
 ENTRYPOINT ["/bin/bash"]

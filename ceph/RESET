@@ -12,7 +12,7 @@ ceph auth get-or-create client.nova mon "allow r" osd "allow class-read object_p
 ceph auth get-or-create client.gnocchi mon "allow r" osd "allow rwx pool=metrics" -o /etc/ceph/ceph.client.gnocchi.keyring
 
 ##Kubernetes Keys
-ceph auth get-or-create client.kube mon 'allow r' osd 'allow class-read object_prefix rbd_children, allow rwx pool=volumes' -o ceph.client.kube.keyring
+ceph auth get-or-create client.kube mon 'allow r' osd 'allow class-read object_prefix rbd_children, allow rwx pool=pvc' -o ceph.client.kube.keyring
 
 ##Clean
 OSDHOST=$(hostname)
@@ -47,16 +47,29 @@ JSON=$(ceph-volume lvm list --format json)
 FSID=$(printf "$JSON\n"|tr '.' '_'|jq '.[]|.[].tags.ceph_osd_fsid'|tr -d \")
 ID=$(printf "$JSON\n"|tr '.' '_'|jq '.[]|.[].tags.ceph_osd_id'|tr -d \")
 ceph-volume lvm activate $ID $FSID
-ceph-osd -i $ID -d
+ceph-osd -i $ID <-d>
 
-##Pools
+#Non-Mon OSD prep
+NODE=<prong.mgmt>
+ln -s /etc/ceph/ceph.mon.keyring /etc/ceph/ceph.mon.$NODE.keyring
+ceph-volume lvm prepare --bluestore --data $OSDHOST/ceph
+JSON=$(ceph-volume lvm list --format json)
+FSID=$(printf "$JSON\n"|tr '.' '_'|jq '.[]|.[].tags.ceph_osd_fsid'|tr -d \")
+ID=$(printf "$JSON\n"|tr '.' '_'|jq '.[]|.[].tags.ceph_osd_id'|tr -d \")
+ceph-volume lvm activate $ID $FSID
+ceph-osd -i $ID <-d>
+
+#Generic Pools
+ceph osd pool create default 32
+ceph osd pool create rbd 32
+ceph osd pool create backups 32
+ceph osd pool create pvc 32
+
+##OpenStack Pools
 ceph osd pool create metrics 64
 ceph osd pool create vms 64
 ceph osd pool create images 64
 ceph osd pool create volumes 64
-ceph osd pool create default 32
-ceph osd pool create rbd 32
-ceph osd pool create backups 64
 
 #Mgr
 mkdir -p /var/lib/ceph/mgr/ceph-$(hostname)

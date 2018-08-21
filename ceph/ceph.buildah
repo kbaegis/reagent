@@ -13,9 +13,9 @@ nulllabs.vcs-ref="$GHEAD" \
 nulllabs.vendor="NullLabs" \
 nulllabs.version="beta-0.0.1" \
 nulllabs.schema-version="1.0" \
-nulllabs.docker.cmd="docker run -d --network host --privileged -v /var/lib/ceph/:/var/lib/ceph/ -v /dev/:/dev/ -v /sys/:/sys/ --name nulllabs-ceph -l nulllabs.image=crucible.lab:4000/oci/ceph crucible.lab:4000/oci/ceph:latest" \
-nulllabs.docker.cmd.devel="docker run -it --name nulllabs-ceph-tmp -l nulllabs.image=crucible.lab:4000/oci/ceph --rm --entrypoint=/bin/bash --network host --privileged crucible.lab:4000/oci/ceph:latest" \
-nulllabs.docker.cmd.test="docker run -it --name nulllabs-ceph-test -l nulllabs.image=crucible.lab:4000/oci/ceph --rm --entrypoint=/bin/bash crucible.lab:4000/oci/ceph:latest" \
+nulllabs.docker.cmd="docker run -d --network host --privileged -v /var/lib/ceph/:/var/lib/ceph/ -v /dev/:/dev/ -v /sys/:/sys/ --name nulllabs-ceph -l nulllabs.image=crucible.lab:4000/oci/ceph --restart always crucible.lab:4000/oci/ceph:latest" \
+nulllabs.docker.cmd.devel="docker run -it --network host --privileged -v /var/lib/ceph/:/var/lib/ceph/ -v /dev/:/dev/ -v /sys/:/sys/ --name nulllabs-ceph-tmp -l nulllabs.image=crucible.lab:4000/oci/ceph --rm --entrypoint=/bin/bash --network host --privileged crucible.lab:4000/oci/ceph:latest" \
+nulllabs.docker.cmd.test="docker run -it --network host --privileged -v /var/lib/ceph/:/var/lib/ceph/ -v /dev/:/dev/ -v /sys/:/sys/ --name nulllabs-ceph-tmp -l nulllabs.image=crucible.lab:4000/oci/ceph --rm --entrypoint=/usr/local/bin/test.sh --network host --privileged crucible.lab:4000/oci/ceph:latest" \
 nulllabs.docker.cmd.debug="docker exec -it nulllabs-ceph bash" \
 nulllabs.docker.cmd.help="docker exec -it nulllabs-ceph /usr/local/bin/entrypoint.sh --help" \
 nulllabs.docker.params="REPO=,THREADS="
