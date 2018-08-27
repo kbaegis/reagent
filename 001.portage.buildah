@@ -3,7 +3,7 @@ FROM crucible.lab:4000/oci/gentoo-stage3-amd64-hardened:latest
 ARG BDATE="$(date --rfc-3339=date)"
 ARG GHEAD="$(git rev-parse HEAD)"
 ARG THREADS=33
-ARG REPOURL="https://services.home/git/NullLabs/oci"
+ARG REPOURL="https://server.home/git/NullLabs/oci"
 ARG CREGISTRY="crucible.lab:4000/oci"
 ARG RSYNCURI="rsync://crucible.mgmt/gentoo-portage"
 LABEL nulllabs.build-date="$BDATE" \
@@ -34,17 +34,18 @@ ENV PORTAGE_BINHOST="https://crucible.lab/generic" \
   EDITOR="/usr/bin/vi" \
   RSYNCURI="rsync://crucible.mgmt/gentoo-portage" \
   GENESIS="crucible.lab:4000/oci/gentoo-stage3-amd64-hardened:latest"
-ADD ./.build/ /root/.build/
+ADD .build/ /root/.build/
 RUN mkdir -p /usr/local/share/ca-certificates/ \
  && mkdir -p /etc/portage/env/ \
  && mkdir -p /etc/portage/package.use/ \
  && mkdir -p /etc/portage/repos.conf \
- && printf '[gentoo]\nlocation = /usr/portage\nsync-type = rsync\nsync-uri = rsync://crucible.mgmt/gentoo-portage\nauto-sync = yes\n' >/etc/portage/repos.conf/gentoo.conf \
+ && mkdir -p /usr/portage/distfiles \
+ && printf '[gentoo]\nlocation = /usr/portage\nsync-type = rsync\nsync-uri = rsync://crucible.mgmt/gentoo-portage\nauto-sync = yes\nsync-rsync-verify-metamanifest = no\n' >/etc/portage/repos.conf/gentoo.conf \
  && mkdir -p /usr/portage/distfiles/ \
  && chmod 764 /usr/portage/distfiles/ \
  && chown portage:portage /usr/portage/distfiles/ \
  && touch /var/lib/portage/world
-ADD ./.x509/CA.cert.pem /usr/local/share/ca-certificates/
+ADD .x509/CA.cert.pem /usr/local/share/ca-certificates/
 RUN emaint sync -a \
  && printf 'app-misc/ca-certificates cacert\n' >/etc/portage/package.use/ca-certificates \
  && printf "EMERGE_DEFAULT_OPTS='-bgq --nospinner'\n" >>/etc/portage/make.conf \
@@ -54,7 +55,8 @@ RUN emaint sync -a \
  && emerge --oneshot portage \
  && emerge dev-vcs/git app-editors/vim @preserved-rebuild \
  && emerge -DNu world --keep-going \
- && emerge --depclean \
+ && eselect python set python3.6 \
+ && emerge --depclean --with-bdeps=n \
  && printf "US/Mountain\n" >/etc/timezone \
  && $HOME/.build/rsync.sh \
  && printf 'export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n' >>/etc/skel/.bashrc

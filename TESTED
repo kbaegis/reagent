@@ -1,0 +1,10 @@
+build -e (up to -i, then fails)
+
+---
+Bootstrapping via stage3.
+America/Denver
+aae0860e8e9d10f08e7c83dddf333d13d021085859191df054b94f56a6a4c315
+Building *.
+fatal: Not a git repository (or any of the parent directories): .git
+error checking path "/var/lib/containers/storage/overlay/018d306bff0cc1fc5cf1e92e79d278bc35f8824b6433e25d7250f231cad0bcac/merged": stat /var/lib/containers/storage/overlay/018d306bff0cc1fc5cf1e92e79d278bc35f8824b6433e25d7250f231cad0bcac/merged: no such file or directory
+Makefile took 121.683 seconds to build.

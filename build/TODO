@@ -1,3 +1,6 @@
 *podman login
-opt/oci git pull
-buildah git pull
+Testing framework
+Improve tag handling
+Test bootstrapping
+git globals for commit
+Code coverage

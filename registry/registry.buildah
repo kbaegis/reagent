@@ -1,5 +1,23 @@
 FROM crucible.lab:4000/oci/go:latest
-LABEL maintainer="poseidon@poseidon.mgmt"
+ARG BDATE="$(date --rfc-3339=date)"
+ARG GHEAD="$(git rev-parse HEAD)"
+LABEL nulllabs.build-date="$BDATE" \
+nulllabs.name="registry" \
+nulllabs.maintainer="kbaegis@gmail.com" \
+nulllabs.description="NullLabs registry container" \
+nulllabs.usage="https://services.home/git/NullLabs/oci/src/master/registry/README.md" \
+nulllabs.url="https://services.home/git/NullLabs/oci/src/master/registry/README.md" \
+nulllabs.vcs-url="https://services.home/git/NullLabs/oci/src/master/registry/" \
+nulllabs.vcs-ref="$GHEAD" \
+nulllabs.vendor="NullLabs" \
+nulllabs.version="beta-0.0.1" \
+nulllabs.schema-version="1.0" \
+nulllabs.docker.cmd="docker run -d 4000:4000/tcp --name nulllabs-registry -l nulllabs.image=crucible.lab:4000/oci/registry crucible.lab:4000/oci/registry:latest" \
+nulllabs.docker.cmd.devel="docker run -it --name nulllabs-registry-tmp -l nulllabs.image=crucible.lab:4000/oci/registry --rm --entrypoint=/bin/bash crucible.lab:4000/oci/registry:latest" \
+nulllabs.docker.cmd.test="docker run -it --name nulllabs-registry-test -l nulllabs.image=crucible.lab:4000/oci/registry --rm --entrypoint=/usr/local/bin/test.sh crucible.lab:4000/oci/registry:latest" \
+nulllabs.docker.cmd.debug="docker exec -it nulllabs-registry bash" \
+nulllabs.docker.cmd.help="docker exec -it nulllabs-registry /usr/local/bin/entrypoint.sh --help" \
+nulllabs.docker.params="REPO=,THREADS="
 
 RUN mkdir -p /etc/docker/registry/ \
  && mkdir -p /etc/ssl/docker-registry/
@@ -7,7 +25,7 @@ ADD etc/* /etc/docker/registry/
 ADD .x509/* /etc/ssl/docker-registry/
 ADD bin/* /usr/local/bin/
 
-RUN go get services.lab/git/NullLabs/docker-distribution.git/cmd/registry \
+RUN go get server.lab/git/NullLabs/docker-distribution.git/cmd/registry \
  && $HOME/.build/finalize.sh
 
 EXPOSE 4000/tcp

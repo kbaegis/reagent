@@ -14,10 +14,11 @@ nulllabs.version="beta-0.0.1" \
 nulllabs.schema-version="1.0" \
 nulllabs.docker.cmd="docker run -d -p 53:53/tcp -p 53:53/udp -p 8081:8081 --name nulllabs-pdns -l nulllabs.image=crucible.lab:4000/oci/pdns crucible.lab:4000/oci/pdns:latest" \
 nulllabs.docker.cmd.devel="docker run -it --name nulllabs-pdns-tmp -l nulllabs.image=crucible.lab:4000/oci/pdns --rm --entrypoint=/bin/bash crucible.lab:4000/oci/pdns:latest" \
-nulllabs.docker.cmd.test="docker run -it --name nulllabs-pdns-test -l nulllabs.image=crucible.lab:4000/oci/pdns --rm --entrypoint=/bin/bash crucible.lab:4000/oci/pdns:latest" \
+nulllabs.docker.cmd.test="docker run -it --name nulllabs-pdns-test -l nulllabs.image=crucible.lab:4000/oci/pdns --rm --entrypoint=/usr/local/bin/test.sh crucible.lab:4000/oci/pdns:latest" \
 nulllabs.docker.cmd.debug="docker exec -it nulllabs-pdns bash" \
 nulllabs.docker.cmd.help="docker exec -it nulllabs-pdns /usr/local/bin/entrypoint.sh --help" \
 nulllabs.docker.params="REPO=,THREADS="
+ENV RECURSOR='8.8.8.8'
 
 ##Build
 RUN printf 'net-dns/pdns geoip ldap libressl lua mysql postgres sqlite tools\ndev-db/mariadb -bindist -openssl -server\ndev-db/mysql -openssl -server\ndev-db/postgresql -server\nvirtual/mysql -server' >/etc/portage/package.use/pdns \
@@ -29,6 +30,6 @@ RUN chmod -R 777 /etc/powerdns
 
 EXPOSE 53/udp 53/tcp 8081/tcp
 
-ENTRYPOINT ["pdns_server"]
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 
 HEALTHCHECK --interval=30s --timeout=1s CMD /usr/local/bin/healthcheck.sh

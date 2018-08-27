@@ -2,47 +2,44 @@ FROM crucible.lab:4000/oci/go:latest
 ARG BDATE="$(date --rfc-3339=date)"
 ARG GHEAD="$(git rev-parse HEAD)"
 ARG GBRANCH="master"
+ARG REPO="https://server.lab/git"
 LABEL nulllabs.build-date="$BDATE" \
-nulllabs.name="build" \
-nulllabs.maintainer="kbaegis@gmail.com" \
-nulllabs.description="Build container for catalyst/buildah/jenkins CI" \
-nulllabs.usage="https://services.home/git/NullLabs/oci/src/master/build/README.md" \
-nulllabs.url="https://services.home/git/NullLabs/oci/src/master/build/README.md" \
-nulllabs.vcs-url="https://services.home/git/NullLabs/oci/src/master/build/" \
-nulllabs.vcs-ref="$GHEAD" \
-nulllabs.vendor="NullLabs" \
-nulllabs.version="beta-0.0.1" \
-nulllabs.schema-version="1.0" \
-nulllabs.docker.cmd="docker run -it --rm --name nulllabs-build --privileged -l nulllabs.image=crucible.lab:4000/oci/build crucible.lab:4000/oci/build:latest" \
-nulllabs.docker.cmd.devel="docker run -it --name nulllabs-build-tmp --privileged -l nulllabs.image=crucible.lab:4000/oci/build --rm --entrypoint=/bin/bash crucible.lab:4000/oci/build:latest" \
-nulllabs.docker.cmd.test="docker run -it --name nulllabs-build-test --privileged - l nulllabs.image=crucible.lab:4000/oci/build --rm --entrypoint=/bin/bash crucible.lab:4000/oci/build:latest" \
-nulllabs.docker.cmd.debug="docker exec -it nulllabs-build bash" \
-nulllabs.docker.cmd.help="docker exec -it nulllabs-build /usr/local/bin/entrypoint.sh --help" \
-nulllabs.docker.params=""
+  nulllabs.name="build" \
+  nulllabs.maintainer="kbaegis@gmail.com" \
+  nulllabs.description="Build container for catalyst/buildah/jenkins CI" \
+  nulllabs.usage="https://services.home/git/NullLabs/oci/src/master/build/README.md" \
+  nulllabs.url="https://services.home/git/NullLabs/oci/src/master/build/README.md" \
+  nulllabs.vcs-url="https://services.home/git/NullLabs/oci/src/master/build/" \
+  nulllabs.vcs-ref="$GHEAD" \
+  nulllabs.vendor="NullLabs" \
+  nulllabs.version="beta-0.0.1" \
+  nulllabs.schema-version="1.0" \
+  nulllabs.docker.cmd="docker run -it --rm --name nulllabs-build --privileged -l nulllabs.image=crucible.lab:4000/oci/build crucible.lab:4000/oci/build:latest" \
+  nulllabs.docker.cmd.devel="docker run -it --name nulllabs-build-tmp --privileged -l nulllabs.image=crucible.lab:4000/oci/build --rm --entrypoint=/bin/bash crucible.lab:4000/oci/build:latest" \
+  nulllabs.docker.cmd.test="docker run -it --name nulllabs-build-test --privileged - l nulllabs.image=crucible.lab:4000/oci/build --rm --entrypoint=/usr/local/bin/test.sh crucible.lab:4000/oci/build:latest" \
+  nulllabs.docker.cmd.debug="docker exec -it nulllabs-build bash" \
+  nulllabs.docker.cmd.help="docker exec -it nulllabs-build /usr/local/bin/entrypoint.sh --help" \
+  nulllabs.docker.params=""
 
-ENV PORTAGE_BINHOST="https://crucible.lab/generic" \
-  PORTDIR="/usr/portage" \
-  PKGDIR="/usr/portage/packages/generic" \
-  FEATURES="binpkg-multi-instance" \
-  MAKEOPTS="-j$THREADS" \
-  EMERGE_DEFAULT_OPTS="-bg" \
-  GENTOO_MIRRORS="https://crucible.lab" \
-  SSL_CERT_FILE="/etc/ssl/certs/ca-certificates.crt" \
-  EDITOR="/usr/bin/vi" \
-  GOPATH="/root/.go" \
-  GOBIN="/root/.go/bin" \
-  REGISTRY="crucible.lab:4000" \
-  NAMESPACE="/oci/"
+ENV REGISTRY="crucible.lab:4000" \
+  NAMESPACE="/oci/" \
+  REPO="https://server.lab/git"
 
 ADD .x509/* /root/.ssh/
 ADD bin/* /usr/local/bin/
+#RUN git clone -c http.sslVerify=false https://server.lab/git/NullLabs/oci.git /opt/oci/ \
+# && chmod 600 ~/.ssh/* \
+# && git -C /opt/oci checkout $GBRANCH \
+# && git -C /opt/oci/ submodule init \
+# && git -C /opt/oci/ submodule update --recursive --remote
 RUN printf 'dev-util/bats ~amd64\napp-emulation/skopeo ~amd64\ndev-util/catalyst ~amd64\ndev-python/snakeoil ~amd64\ndev-python/pydecomp ~amd64\napp-emulation/cri-o ~amd64\nnet-misc/cni-plugins ~amd64\ndev-util/ostree ~amd64\n' >>/etc/portage/package.accept_keywords \
  && printf 'FEATURES="-usersandbox -sandbox"\n' >> /etc/portage/env/nosandbox.conf \
  && printf 'dev-go/go-md2man nosandbox.conf\napp-emulation/skopeo nosandbox.conf\n' >> /etc/portage/package.env \
  && printf 'autocmd BufNewFile,BufRead *.buildah set syntax=dockerfile\n' >> ~/.vimrc \
- && printf "app-emulation/cri-o device-mapper seccomp btrfs ostree\n" >>/etc/portage/package.use/build \
+ && printf "app-emulation/cri-o device-mapper seccomp btrfs ostree\ndev-util/pkgconfig internal-glib\nsys-apps/help2man -nls\n" >>/etc/portage/package.use/build \
  && emaint -a all \
- && emerge dev-go/sanitized-anchor-name dev-python/pygpgme dev-libs/libassuan sys-libs/libseccomp app-emulation/skopeo sys-fs/fuse sys-libs/libselinux app-admin/sudo dev-go/go-md2man dev-python/snakeoil dev-util/catalyst dev-libs/glib \
+ && emerge -DNu world --with-bdeps=y \
+ && emerge dev-go/sanitized-anchor-name dev-python/pygpgme dev-libs/libassuan sys-libs/libseccomp app-emulation/skopeo sys-fs/fuse sys-libs/libselinux app-admin/sudo dev-go/go-md2man dev-python/snakeoil dev-util/catalyst dev-libs/glib app-misc/jq \
  && mkdir -p /etc/catalyst/portage/package.use \
  && mkdir -p /etc/catalyst/portage/package.mask \
  && mkdir -p /var/tmp/catalyst/builds/default/ \
@@ -50,7 +47,8 @@ RUN printf 'dev-util/bats ~amd64\napp-emulation/skopeo ~amd64\ndev-util/catalyst
  && mkdir -p /usr/portage/distfiles/ \
  && chmod -R 777 /usr/lib/go/pkg/linux_amd64/* \
  && emerge app-emulation/runc \
- && git clone https://services.lab/git/NullLabs/ostree.git /tmp/ostree-git/ \
+ && $HOME/.build/finalize.sh \
+ && git clone $REPO/NullLabs/ostree.git /tmp/ostree-git/ \
  && /tmp/ostree-git/autogen.sh \
  && cd /tmp/ostree-git/ \
  && ./configure \
@@ -63,18 +61,17 @@ RUN printf 'dev-util/bats ~amd64\napp-emulation/skopeo ~amd64\ndev-util/catalyst
  && make -j$THREADS \
  && make install \
  && mkdir -p $GOPATH/src/github.com/projectatomic/libpod/ \
- && git clone https://services.lab/git/NullLabs/libpod.git $GOPATH/src/github.com/projectatomic/libpod/ \
+ && git clone $REPO/NullLabs/libpod.git $GOPATH/src/github.com/projectatomic/libpod/ \
  && cd $GOPATH/src/github.com/projectatomic/libpod/ \
- && make -j$THREADS install.tools \
  && make -j$THREADS \
  && make install \
- && printf "\nhost services.lab\nHostName services.lab\nIdentityFile ~/.ssh/id_rsa.private\nUser git\n" >>~/.ssh/config \
+ && printf "\nhost server.lab\nHostName server.lab\nIdentityFile ~/.ssh/id_rsa.private\nUser git\n" >>~/.ssh/config \
  && chmod 600 /root/.ssh/* \
- && git clone ssh://git@services.lab:2022/NullLabs/oci.git /opt/oci/ \
+ && ssh-keygen -R server.lab \
+ && git clone -c http.sslVerify=false https://server.lab/git/NullLabs/oci.git /opt/oci/ \
  && git -C /opt/oci checkout $GBRANCH \
  && git -C /opt/oci/ submodule init \
- && git -C /opt/oci/ submodule update --recursive --remote \
- && $HOME/.build/finalize.sh \
+ && git -C /opt/oci/ submodule update --recursive --remote --merge \
  && ln -s /opt/oci/pybuild.py /usr/local/bin/build \
  && useradd jenkins -G wheel \
  && printf "%%wheel ALL=(ALL) NOPASSWD: ALL\n" >>/etc/sudoers \
@@ -86,6 +83,5 @@ ADD catalyst-package.use/* /etc/catalyst/portage/package.use/
 ADD catalyst-package.mask/* /etc/catalyst/porgage/package.mask/
 ADD spec/* /var/tmp/catalyst/builds/default/
 
-#ENTRYPOINT ["/bin/bash"]
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["-vpcib","all"]

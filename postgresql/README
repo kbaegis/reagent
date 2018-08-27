@@ -1,0 +1,17 @@
+CREATE PUBLICATION radius FOR ALL TABLES ;
+CREATE SUBSCRIPTION radius CONNECTION 'host=services.mgmt port=5432 user=replication sslmode=verify-ca sslrootcert=/etc/ssl/postgresql/CA.cert.pem sslcert=/etc/ssl/postgresql/libpq-replication.cert.pem sslkey=/etc/ssl/postgresql/libpq-replication.key.pem dbname=radius' PUBLICATION radius;
+CREATE PUBLICATION nextcloud FOR ALL TABLES ;
+CREATE SUBSCRIPTION nextcloud CONNECTION 'host=services.mgmt port=5432 user=replication sslmode=verify-ca sslrootcert=/etc/ssl/postgresql/CA.cert.pem sslcert=/etc/ssl/postgresql/libpq-replication.cert.pem sslkey=/etc/ssl/postgresql/libpq-replication.key.pem dbname=nextcloud' PUBLICATION nextcloud;
+CREATE TABLE test ( prime varchar primary key, int int );
+
+#Logical replication
+\dRp+
+\dRs+
+SELECT * FROM pg_replication_slots;
+
+#Backup operations
+pg_dumpall >pg.$DATE.sql
+psql <pg.$DATE.sql
+
+#Healthcheck
+PGDATA=/var/lib/postgresql/10/data/ pg_ctl status;

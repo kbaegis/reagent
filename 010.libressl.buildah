@@ -4,7 +4,7 @@ FROM crucible.lab:4000/oci/portage:latest
 ARG BDATE="$(date --rfc-3339=date)"
 ARG GHEAD="$(git rev-parse HEAD)"
 ARG THREADS=33
-ARG REPOURL="https://services.home/git/NullLabs/oci"
+ARG REPOURL="https://server.home/git/NullLabs/oci"
 ARG CREGISTRY="crucible.lab:4000/oci"
 LABEL nulllabs.build-date="$BDATE" \
 nulllabs.name="libressl" \
@@ -32,7 +32,7 @@ ENV PORTAGE_BINHOST="https://crucible.lab/generic" \
   GENTOO_MIRRORS="https://crucible.lab" \
   SSL_CERT_FILE="/etc/ssl/certs/ca-certificates.crt" \
   EDITOR="/usr/bin/vi"
-ADD ./.x509/* /tmp/
+ADD .x509/* /tmp/
 RUN echo 'USE="${USE} libressl"' >> /etc/portage/make.conf \
  && echo 'USE="${USE} libressl"' >> /etc/portage/make.conf.bak \
  && mkdir -p /etc/portage/profile \
@@ -48,12 +48,14 @@ RUN echo 'USE="${USE} libressl"' >> /etc/portage/make.conf \
  && echo CURL_SSL='libressl' >>/etc/portage/make.conf \
  && FETCHCOMMAND='wget -t 3 -T 60 --passive-ftp --no-check-certificate -O "${DISTDIR}/${FILE}" "${URI}"' RESUMECOMMAND='wget -c -t 3 -T 60 --passive-ftp --no-check-certificate -O "${DISTDIR}/${FILE}" "${URI}"' emerge @preserved-rebuild \
  && SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt emerge net-misc/curl \
- && SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt emerge --depclean \
+ && SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt emerge --depclean --with-bdeps=n \
  && for i in $(ls /tmp/*.gpg);do gpg --import $i;done \
  && for i in $(ls /tmp/*.pem);do file=$(basename $i);cp $i /usr/local/share/ca-certificates/$file.crt;done \
  && update-ca-certificates \
  && mkdir ~/.ssh/ \
  && cp /tmp/docker_rsa* ~/.ssh/ \
+ && cp /tmp/config ~/.ssh/ \
+ && chmod 600 ~/.ssh/* \
  && mkdir -p /etc/portage/profile/ \
  && printf "\ndev-libs/openssl-1" >> /etc/portage/profile/package.provided \
  && $HOME/.build/rsync.sh

@@ -1,5 +1,7 @@
 #!/bin/bash
 
+## Deprecated - Please use pybuild.py rather than this outdated bash script. :)
+
 #UID=$(id -u)
 GID=$(id -g)
 DATE=$(date "+%d-%m-%y")

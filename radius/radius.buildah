@@ -14,23 +14,27 @@ nulllabs.version="beta-0.0.1" \
 nulllabs.schema-version="1.0" \
 nulllabs.docker.cmd="docker run -d -p 1812:1812/udp -p 1813:1813/udp --name nulllabs-radius -l nulllabs.image=crucible.lab:4000/oci/radius crucible.lab:4000/oci/radius:latest" \
 nulllabs.docker.cmd.devel="docker run -it --name nulllabs-radius-tmp -l nulllabs.image=crucible.lab:4000/oci/radius --rm --entrypoint=/bin/bash crucible.lab:4000/oci/radius:latest" \
-nulllabs.docker.cmd.test="docker run -it --name nulllabs-radius-test -l nulllabs.image=crucible.lab:4000/oci/radius --rm --entrypoint=/bin/bash crucible.lab:4000/oci/radius:latest" \
+nulllabs.docker.cmd.test="docker run -it --name nulllabs-radius-test -l nulllabs.image=crucible.lab:4000/oci/radius --rm --entrypoint=/usr/local/bin/test.sh crucible.lab:4000/oci/radius:latest" \
 nulllabs.docker.cmd.debug="docker exec -it nulllabs-radius bash" \
 nulllabs.docker.cmd.help="docker exec -it nulllabs-radius /usr/local/bin/entrypoint.sh --help" \
 nulllabs.docker.params="REPO=,THREADS="
 
+ENV DATABASESRV="server.mgmt" \
+    GITROOT="https://server.lab/git/NullLabs" \
+    PACKAGE="yes"
+
 RUN printf "dev-db/postgresql -server\n" >>/etc/portage/package.use/freeradius \
  && emerge -bg sys-libs/talloc dev-util/cmake dev-db/postgresql dev-libs/libpqxx \
- && git clone https://services.lab/git/NullLabs/libkqueue.git /tmp/libkqueue \
+ && git clone $GITROOT/libkqueue.git /tmp/libkqueue \
  && cd /tmp/libkqueue/ \
  && cmake -G "Unix Makefiles" -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_LIBDIR=lib $(pwd) \
- && make \
+ && make $MAKEOPTS \
  && make install \
- && git clone https://services.lab/git/NullLabs/freeradius-server.git /tmp/freeradius-server \
+ && git clone $GITROOT/freeradius-server.git /tmp/freeradius-server \
  && cd /tmp/freeradius-server \
  && git checkout v3.0.x \
  && ./configure \
- && make \
+ && make $MAKEOPTS \
  && make install \
  && sed -i "s#^default_bits.*#default_bits = 8192#g" /usr/local/etc/raddb/certs/ca.cnf \
  && useradd radius
@@ -60,7 +64,7 @@ RUN $HOME/.build/rsync.sh
 #EXPOSE 2870/tcp 6758/tcp
 EXPOSE 1812/udp 1813/udp
 
-ENTRYPOINT ["radiusd"]
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 
 CMD ["-X"]
 

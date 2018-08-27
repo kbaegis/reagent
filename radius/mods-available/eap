@@ -5,8 +5,8 @@ eap {
 	cisco_accounting_username_bug = no
 	max_sessions = ${max_requests}
 	tls-config tls-common {
-		private_key_file = ${certdir}/Radius.key.pem
-		certificate_file = ${certdir}/Radius.cert.pem
+		private_key_file = ${certdir}/radius-server.key.pem
+		certificate_file = ${certdir}/radius-server.cert.pem
 		ca_file = ${cadir}/CA.cert.pem
 		dh_file = ${certdir}/dh.8192
 		ca_path = ${cadir}

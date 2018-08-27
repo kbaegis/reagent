@@ -15,7 +15,7 @@ nulllabs.version="beta-0.0.1" \
 nulllabs.schema-version="1.0" \
 nulllabs.docker.cmd="docker run -d --privileged --cap-add=NET_RAW --cap-add=NET_ADMIN --network host --name nulllabs-strongswan -l nulllabs.image=crucible.lab:4000/oci/strongswan -v /etc/strongswan.d/:/etc/strongswan.d/:ro crucible.lab:4000/oci/strongswan:latest" \
 nulllabs.docker.cmd.devel="docker run -it --name nulllabs-strongswan-tmp -l nulllabs.image=crucible.lab:4000/oci/strongswan --rm --entrypoint=/bin/bash crucible.lab:4000/oci/strongswan:latest" \
-nulllabs.docker.cmd.test="docker run -it --name nulllabs-strongswan-test -l nulllabs.image=crucible.lab:4000/oci/strongswan --rm --entrypoint=/bin/bash crucible.lab:4000/oci/strongswan:latest" \
+nulllabs.docker.cmd.test="docker run -d --privileged --cap-add=NET_RAW --cap-add=NET_ADMIN --network host --name nulllabs-strongswan -l nulllabs.image=crucible.lab:4000/oci/strongswan -v /etc/strongswan.d/:/etc/strongswan.d/:ro --entrypoint=/usr/local/bin/test.sh crucible.lab:4000/oci/strongswan:latest" \
 nulllabs.docker.cmd.debug="docker exec -it nulllabs-strongswan bash" \
 nulllabs.docker.cmd.help="docker exec -it nulllabs-strongswan /usr/local/bin/entrypoint.sh --help" \
 nulllabs.docker.params="REPO=,THREADS="

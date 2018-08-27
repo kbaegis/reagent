@@ -27,11 +27,12 @@ ENV PORTAGE_BINHOST="https://crucible.lab/generic" \
   GENTOO_MIRRORS="https://crucible.lab" \
   SSL_CERT_FILE="/etc/ssl/certs/ca-certificates.crt" \
   EDITOR="/usr/bin/vi"
-RUN printf "dev-java/icedtea alsa cups -gtk headless-awt jbootstrap libressl -nsplugin sctp shenandoah source sunec -webstart\ndev-java/icedtea-bin -gtk -webstart -alsa -cups\napp-text/ghostscript-gpl cups dbus tiff unicode\n" >> /etc/portage/package.use/java \
+RUN printf "dev-java/icedtea alsa cups -gtk headless-awt jbootstrap libressl -nsplugin sctp shenandoah source sunec -webstart\ndev-java/icedtea-bin -gtk -webstart -alsa -cups\napp-text/ghostscript-gpl cups dbus tiff unicode\ndev-util/pkgconfig internal-glib\n" >> /etc/portage/package.use/java \
  && printf "dev-java/icedtea ~amd64\n" >> /etc/portage/package.accept_keywords \
  && printf 'FEATURES="-usersandbox"\n' >> /etc/portage/env/nousersandbox.conf \
  && printf "dev-java/icedtea nousersandbox.conf\ndev-java/maven-bin nousersandbox.conf\ndev-libs/gobject-introspection nousersandbox.conf\n" >> /etc/portage/package.env \
  && emerge dev-java/icedtea dev-java/maven-bin \
- && $HOME/.build/rsync.sh
+ && $HOME/.build/rsync.sh \
+ && emerge --depclean --with-bdeps=n
 
 ENTRYPOINT ["/bin/bash"]
