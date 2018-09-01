@@ -16,14 +16,15 @@ LABEL nulllabs.build-date="$BDATE" \
   nulllabs.schema-version="1.0" \
   nulllabs.docker.cmd="docker run -it --rm --name nulllabs-build --privileged -l nulllabs.image=crucible.lab:4000/oci/build crucible.lab:4000/oci/build:latest" \
   nulllabs.docker.cmd.devel="docker run -it --name nulllabs-build-tmp --privileged -l nulllabs.image=crucible.lab:4000/oci/build --rm --entrypoint=/bin/bash crucible.lab:4000/oci/build:latest" \
-  nulllabs.docker.cmd.test="docker run -it --name nulllabs-build-test --privileged - l nulllabs.image=crucible.lab:4000/oci/build --rm --entrypoint=/usr/local/bin/test.sh crucible.lab:4000/oci/build:latest" \
+  nulllabs.docker.cmd.test="podman --cgroup-manager cgroupfs run --entrypoint=/opt/oci/tests.py crucible.lab:4000/oci/build:latest" \
   nulllabs.docker.cmd.debug="docker exec -it nulllabs-build bash" \
   nulllabs.docker.cmd.help="docker exec -it nulllabs-build /usr/local/bin/entrypoint.sh --help" \
   nulllabs.docker.params=""
 
 ENV REGISTRY="crucible.lab:4000" \
   NAMESPACE="/oci/" \
-  REPO="https://server.lab/git"
+  REPO="https://server.lab/git" \
+  BUILDAH_TAG="v1.3"
 
 ADD .x509/* /root/.ssh/
 ADD bin/* /usr/local/bin/
@@ -58,6 +59,7 @@ RUN printf 'dev-util/bats ~amd64\napp-emulation/skopeo ~amd64\ndev-util/catalyst
  && ln -s /usr/local/lib64/pkgconfig/ostree-1.pc /usr/lib64/pkgconfig/ \
  && go get github.com/projectatomic/buildah \
  && cd $GOPATH/src/github.com/projectatomic/buildah/ \
+ && git -C $GOPATH/src/github.com/projectatomic/buildah checkout $BUILDAH_TAG \
  && make -j$THREADS \
  && make install \
  && mkdir -p $GOPATH/src/github.com/projectatomic/libpod/ \
@@ -65,6 +67,16 @@ RUN printf 'dev-util/bats ~amd64\napp-emulation/skopeo ~amd64\ndev-util/catalyst
  && cd $GOPATH/src/github.com/projectatomic/libpod/ \
  && make -j$THREADS \
  && make install \
+ && git clone https://github.com/kubernetes-incubator/cri-o $GOPATH/src/github.com/kubernetes-incubator/cri-o \
+ && cd $GOPATH/src/github.com/kubernetes-incubator/cri-o \
+ && mkdir bin \
+ && make bin/conmon -jTHREADS \
+ && make install \
+ && git clone https://github.com/containernetworking/plugins.git $GOPATH/src/github.com/containernetworking/plugins \
+ && cd $GOPATH/src/github.com/containernetworking/plugins \
+ && ./build.sh \
+ && mkdir -p /usr/libexec/cni \
+ && cp bin/* /usr/libexec/cni \
  && printf "\nhost server.lab\nHostName server.lab\nIdentityFile ~/.ssh/id_rsa.private\nUser git\n" >>~/.ssh/config \
  && chmod 600 /root/.ssh/* \
  && ssh-keygen -R server.lab \

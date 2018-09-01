@@ -23,7 +23,7 @@ nulllabs.docker.cmd.test="docker run -it --name nulllabs-portage-test -l nulllab
 nulllabs.docker.cmd.debug="docker exec -it nulllabs-portage bash" \
 nulllabs.docker.cmd.help="docker exec -it nulllabs-portage /usr/local/bin/entrypoint.sh --help" \
 nulllabs.docker.params="THREADS"
-ENV PORTAGE_BINHOST="https://crucible.lab/generic" \
+ENV PORTAGE_BINHOST="https://172.23.255.254/generic/" \
   PORTDIR="/usr/portage" \
   PKGDIR="/usr/portage/packages/generic" \
   FEATURES="binpkg-multi-instance" \
@@ -40,11 +40,12 @@ RUN mkdir -p /usr/local/share/ca-certificates/ \
  && mkdir -p /etc/portage/package.use/ \
  && mkdir -p /etc/portage/repos.conf \
  && mkdir -p /usr/portage/distfiles \
- && printf '[gentoo]\nlocation = /usr/portage\nsync-type = rsync\nsync-uri = rsync://crucible.mgmt/gentoo-portage\nauto-sync = yes\nsync-rsync-verify-metamanifest = no\n' >/etc/portage/repos.conf/gentoo.conf \
+ && printf "[gentoo]\nlocation = /usr/portage\nsync-type = rsync\nsync-uri = $RSYNCURI\nauto-sync = yes\nsync-rsync-verify-metamanifest = no\n" >/etc/portage/repos.conf/gentoo.conf \
  && mkdir -p /usr/portage/distfiles/ \
  && chmod 764 /usr/portage/distfiles/ \
  && chown portage:portage /usr/portage/distfiles/ \
- && touch /var/lib/portage/world
+ && touch /var/lib/portage/world \
+ && printf 'nameserver 172.21.255.254\nnameserver 172.23.255.101\n' >/etc/resolv.conf
 ADD .x509/CA.cert.pem /usr/local/share/ca-certificates/
 RUN emaint sync -a \
  && printf 'app-misc/ca-certificates cacert\n' >/etc/portage/package.use/ca-certificates \
@@ -55,10 +56,12 @@ RUN emaint sync -a \
  && emerge --oneshot portage \
  && emerge dev-vcs/git app-editors/vim @preserved-rebuild \
  && emerge -DNu world --keep-going \
+ && $HOME/.build/rsync.sh \
  && eselect python set python3.6 \
  && emerge --depclean --with-bdeps=n \
  && printf "US/Mountain\n" >/etc/timezone \
- && $HOME/.build/rsync.sh \
+ && git config --global user.email 'build-ci@services.mgmt' \
+ && git config --global user.name 'build-ci' \
  && printf 'export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n' >>/etc/skel/.bashrc
 
 ENTRYPOINT ["/bin/bash"]

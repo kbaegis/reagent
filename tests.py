@@ -8,7 +8,7 @@ import sys
 import os
 import time
 import unittest
-from pybuild import bcolors, parse_arguments, sp_run, portage_build, portage_overlay, catalyst_build, stage3_bootstrap, stage3_spawn, buildah_build, initial_build, project_build, cleanup, registry_push, parse_arguments, imageList
+from pybuild import *
 
 SCRIPTPATH = os.path.dirname(os.path.realpath(__file__))
 LOGFILE = ''.join([SCRIPTPATH, '/log.unittest'])
@@ -47,43 +47,64 @@ class unitTests(unittest.TestCase):
         self.assertEqual(read_test.call.returncode, 0)
         self.assertEqual(rm_test.call.returncode, 0)
 
-    def test_imageList(self):
+    def test_imageList_defaults(self):
         """Test to ensure that imageList methods function appropriately."""
-        image_utest = imageList()
+        image_utest = imageList(verboseargs)
         date = image_utest.date
         base_uri = image_utest.base_uri
-        image_utest.addBuilt('pushed', 0)
-        image_utest.updatePushed('pushed', 0)
-        image_utest.addBuilt('push_failed', 0)
-        image_utest.updatePushed('push_failed', 1)
-        image_utest.addBuilt('built', 0)
-        image_utest.addBuilt('failed', 1)
-        plist = image_utest.listPushed()
-        xp = ['pushed']
-        xplist = []
-        for name in xp:
-            xplist.append(''.join([base_uri, name, ':latest']))
-            xplist.append(''.join([base_uri, name, ':', date]))
-        blist = image_utest.listBuilt()
-        xb = ['pushed', 'push_failed', 'built']
-        xblist = []
-        for name in xb:
-            xblist.append(''.join([base_uri, name, ':latest']))
-            xblist.append(''.join([base_uri, name, ':', date]))
-        flist = image_utest.listFailed()
-        xf = ['push_failed', 'failed']
-        xflist = []
-        for name in xf:
-            xflist.append(''.join([base_uri, name, ':latest']))
-            xflist.append(''.join([base_uri, name, ':', date]))
+        initial = image_utest.statusList()
+        image_utest.addImage('default')
+        image_utest.addImage('bootstrapping','bootstrapping')
+        baseline = image_utest.statusList()
         self.assertEqual(date, DATE)
         self.assertEqual(base_uri, ''.join([REGISTRY, NAMESPACE]))
-        self.assertEqual(plist, xplist)
-        self.assertEqual(blist, xblist)
-        self.assertEqual(flist, xflist)
+    
+    def test_imageList_nop(self):
+        """Test to ensure that imageList methods function appropriately."""
+        image_utest = imageList(verboseargs)
+        image_utest.tags = ['test']
+        image_utest.add_properties = {} #Tests no state
+        image_utest.addImage('default')
+        image_utest.addImage('bootstrapping','bootstrapping')
+        noptracking = image_utest.statusList()
+        self.assertEqual(0, 0)
+        #FIXME
+    
+    def test_imageList_override(self):
+        """Test to ensure that imageList methods function appropriately."""
+        image_utest = imageList(verboseargs)
+        image_utest.tags = ['test']
+        image_utest.add_properties = {'test_disabled': 'xdisabled', 'test_pending': 'xpending', 'test_pass': 'xpass', 'test_fail': 'xfail'}
+        image_utest.enablement = {'default': {'xdisabled': -2, 'xpending': -1, 'xpass': 0, 'xfail': 2} ,'test': {'xdisabled': 0, 'xpending': 0, 'xpass': 0, 'xfail': 0}}
+        #Override bcolors to facilitate string matching in asserts below
+        bcolors.ISUCCESS = ''
+        bcolors.SUCCESS = ''
+        bcolors.VOUT = ''
+        bcolors.PROGRESS = ''
+        bcolors.FAILURE = ''
+        bcolors.ENDC = ''
+        bcolors.BOLD = ''
+        bcolors.UNDERLINE = ''
+        image_utest.addImage('default')
+        image_utest.addImage('test','test')
+        override = image_utest.statusList()
+        output = ''
+        for line in override:
+            output = output + line + '\n'
+        self.assertIn('test_disabled:Disabled', output)
+        self.assertIn('test_pending:Pending', output)
+        self.assertIn('test_pass:Complete', output)
+        self.assertIn('test_fail:Failed', output)
+    
+    def test_imageList_methods(self):
+        """Test to ensure that update* methods function appropriately."""
+        self.assertEqual(0, 0)
+        #FIXME
 
 class nopTests(unittest.TestCase):
     """All tests responsible for testing functions disabled by arguments."""
+    #def setUp(self):
+    #    nopimages = imageList(nopargs)
    
     def test_portage_build_nop(self):
         """Test to ensure that a portage container isn't built and synced if -p isn't called."""
@@ -107,21 +128,32 @@ class nopTests(unittest.TestCase):
 
     def test_stage3_spawn_nop(self):
         """Test to ensure that stage3_spawn doesn't do anything if -i isn't called."""
-        code = stage3_bootstrap(nopargs.build_initial, True)
+        code = stage3_spawn(nopargs.build_initial, True)
         self.assertEqual(code, None)
     
     def test_initial_build_nop(self):
         """Test to ensure that initial build doesn't do anything if -i isn't called."""
-        code = stage3_bootstrap(nopargs.build_initial, True)
+        code = initial_build(nopargs.build_initial, '/dev/null', True)
         self.assertEqual(code, None)
     
     def test_project_build_nop(self):
         """Test to ensure that project build doesn't do anything if fed an empty list of targets."""
-        code = stage3_bootstrap(nopargs.build_targets, True)
-        self.assertEqual(code, None)
+        nopimages = imageList(nopargs)
+        code = project_build(nopargs.build_targets, nopimages, '/dev/null', True)
+        self.assertEqual(code, 0)
     
-    #buildah_build [not called directly]
+    def test_test_images_nop(self):
+        """Test to ensure that test images doesn't do anything if tests are disabled."""
+        code = test_images(nopargs.test_images, True)
+        self.assertEqual(code, 0)
+    
+    def test_registry_push_nop(self):
+        """Test to ensure that registry push doesn't do anything if registry pushing is disabled."""
+        code = registry_push(nopargs.disable_registry, True)
+        self.assertEqual(code, 0)
+    
     #sp_run [not called directly]
+    #buildah_build [not called directly]
 
 class proceduralTests(unittest.TestCase):
     """All methods responsible for testing functional code paths."""
@@ -256,19 +288,19 @@ def proceduralSuite():
 if __name__ == '__main__':
     arguments = ["-v", "-p", "-c", "-i", "-b", "all"]
     verboseargs = parse_arguments(arguments)
-    arguments = ["-v"]
+    arguments = ["-v", "-R"]
     nopargs = parse_arguments(arguments)
     arguments = ["-p", "-c", "-i", "-b", "all"]
     nonverboseargs = parse_arguments(arguments)
-    images = imageList()
+    images = imageList(verboseargs)
     try:
         os.system("rm -rf " + ''.join([SCRIPTPATH, "/.tmp*"]))
     except OSError:
         pass
     runner = unittest.TextTestRunner(verbosity=2, warnings='always')
-    print(bcolors.YELLOW + bcolors.BOLD +"Running codepath tests for disabled functions.\n" + bcolors.ENDC)
+    print(bcolors.PROGRESS + bcolors.BOLD +"Running codepath tests for disabled functions.\n" + bcolors.ENDC)
     runner.run(nopSuite())
-    print(bcolors.YELLOW + bcolors.BOLD +"Running unit tests.\n" + bcolors.ENDC)
+    print(bcolors.PROGRESS + bcolors.BOLD +"Running unit tests.\n" + bcolors.ENDC)
     runner.run(unitSuite())
-    print(bcolors.YELLOW + bcolors.BOLD +"Running procedural functional tests.\n" + bcolors.ENDC)
-    runner.run(proceduralSuite())
+    #print(bcolors.PROGRESS + bcolors.BOLD +"Running procedural functional tests.\n" + bcolors.ENDC)
+    #runner.run(proceduralSuite())

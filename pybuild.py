@@ -34,6 +34,12 @@ for root, dirnames, filenames in os.walk(SCRIPTPATH):
 PROJECT_FILES = set(BUILDAH_FILES) #a set of *..buildah files located under the root directory and excludes INITIAL_FILES
 LOGFILE = ''.join([SCRIPTPATH, '/build.log']) #logfile used throughout
 
+##Return Convention:
+# 0: success
+# 1+: failure
+# -1: pending/intermediate
+# -2: disabled
+
 class bcolors:
     ISUCCESS = '\033[94m' #intermediate success; blue
     SUCCESS = '\033[92m' #success; green
@@ -51,22 +57,55 @@ class subprocessReturn(object):
 
 class imageList(object):
     """
-    Class tracking images in various build states.
+    Class tracking images in various container image states.
     """
-    def __init__(self):
+    def __init__(self, args):
         self.images = {}
         self.base_uri = ''.join([REGISTRY, NAMESPACE])
         self.date = DATE
         self.tags = [self.date, 'latest']
+        self.image_types = ['bootstrapping', 'base', 'leaf', 'default'] #unused
+        self.base_properties = ['uri', 'tag', 'type'] #unused
+        self.add_properties = {'build status': 'core', 'test status': 'test', 'vuln test status': 'vuln_test', 'push status': 'core'} #Operations and the category they fall under, translated to an initial state via enablement.
+        self.enablement = {'default': {'core': -1, 'test': -2, 'vuln_test': -2}, 'bootstrapping': {'core': -1, 'test': -2, 'vuln_test': -2}} #Used in addImage to set the initial state of various operations (pulled in from add_properties). Updated via methods below.
+        self.features = args
+        if self.features.test_images == True:
+            self.enablement['default']['test'] = -1
+        if self.features.test_images == False:
+            self.enablement['default']['test'] = -2
+        if self.features.vuln_test_images == True:
+            self.enablement['default']['vuln_test'] = -1
+        if self.features.vuln_test_images == False:
+            self.enablement['default']['vuln_test'] = -2
 
-    def addBuilt(self, name, build_status):
+    def addImage(self, name, image_type = 'default'):
+        """
+        Initial states are assigned by image_type -> enablement -> add_properties.
+        """
         uri = self.base_uri + name
+        enablement = self.enablement
         for tag in self.tags:
-            self.images[name + tag] = {'uri': uri, 'tag': tag, 'build status': build_status, 'test status': -1, 'vuln test status': -1, 'push status': -1}
+            self.images[name + tag] = {'uri': uri, 'tag': tag, 'type': image_type} #Basic properties
+            for key, value in self.add_properties.items():
+                self.images[name + tag][key] = enablement[image_type][value]
+            if self.features.disable_registry == True:
+                self.images[name + tag].update({'push status': -2})
+
+    def updateBuilt(self, name, build_status):
+        for tag in self.tags:
+            self.images[name + tag].update({'build status': build_status})
     
     def updatePushed(self, name, push_status):
         for tag in self.tags:
             self.images[name + tag].update({'push status': push_status})
+    
+    def updateTested(self, name, test_status):
+        for tag in self.tags:
+            self.images[name + tag].update({'test status': test_status})
+    
+    def updateVulnTested(self, name, vuln_test_status):
+        for tag in self.tags:
+            self.images[name + tag].update({'vuln test status': vuln_test_status})
 
     def statusList(self):
         failure = bcolors.FAILURE + bcolors.BOLD
@@ -83,14 +122,16 @@ class imageList(object):
             return_keys = []
             for key, value in self.images[name].items():
                 return_keys.append(key)
-            for item in return_keys[2:]:
+            for item in return_keys[3:]:
                 value = self.images[name][item]
-                if value == 1:
+                if value >= 1:
                     fails = fails + 1
                     string = string + "; " + item + ":" + failure + "Failed" + end
                 elif value == -1:
                     unfinished = unfinished + 1
                     string = string + "; " + item + ":" + isuccess + "Pending" + end
+                elif value == -2:
+                    string = string + "; " + item + ":" + success + "Disabled" + end
                 else:
                     string = string + "; " + item + ":" + success + "Complete" + end
             if fails > 0:
@@ -114,13 +155,29 @@ class imageList(object):
                 returnlist.append(uri)
         return returnlist
 
-    def listFailed(self):
+    def listUntested(self):
         returnlist = []
         for name, value in self.images.items():
             uri = ''.join([self.images[name]['uri'], ':', self.images[name]['tag']])
             build_status = self.images[name]['build status']
-            push_status = self.images[name]['push status']
-            if build_status > 0 or push_status > 0:
+            test_status = self.images[name]['test status']
+            if build_status == 0 and test_status == -1:
+                returnlist.append(uri)
+        return returnlist
+
+    def listFailed(self):
+        returnlist = []
+        for name, value in self.images.items():
+            uri = ''.join([self.images[name]['uri'], ':', self.images[name]['tag']])
+            failures = 0
+            failable = []
+            for key, value in self.images[name].items():
+                failable.append(key)
+            for item in failable[3:]:
+                value = self.images[name][item]
+                if value > 0:
+                    failures = failures + 1
+            if failures > 0:
                 returnlist.append(uri)
         return returnlist
 
@@ -130,7 +187,7 @@ class imageList(object):
             uri = ''.join([self.images[name]['uri'], ':', self.images[name]['tag']])
             build_status = self.images[name]['build status']
             push_status = self.images[name]['push status']
-            if build_status == 0 and push_status == 0:
+            if push_status == 0:
                 returnlist.append(uri)
         return returnlist
 
@@ -142,6 +199,9 @@ def parse_arguments(arguments):
     parser.add_argument('-c', '--catalyst', dest='build_catalyst', action='store_true', help="Build contents of .stages/default/ with catalyst using specfiles.")
     parser.add_argument('-i', '--initial', dest='build_initial', action='store_true', help="Build all numbered buildah files in the root directory in order with buildah.")
     parser.add_argument('-b', '--build', dest='build_targets', nargs="+", help="Build selected contents matched by regex. Use 'all' to build all leaf containers.")
+    parser.add_argument('-t', '--test', dest='test_images', action='store_true', help="Test images using OCIv1.config.Labels instruction before pushing them to registry.")
+    parser.add_argument('-T', '--vulnerability', dest='vuln_test_images', action='store_true', help="Run vulnerability tests against images.")
+    parser.add_argument('-R', '--disable-registry', dest='disable_registry', action='store_true', help="Disable push to registry and cleanup.")
     args = parser.parse_args(arguments)
     return args
 
@@ -172,6 +232,7 @@ def portage_build(build_portage, images, verbose = False):
         print(bcolors.PROGRESS + bcolors.BOLD + "Building portage" + bcolors.ENDC)
         log.write("Building portage\n")
         name = "portagedir"
+        images.addImage(name, image_type = 'bootstrapping')
         latest_nametag = name + ":latest"
         dated_nametag = name + ":" + DATE
         uri_base = ''.join([REGISTRY, NAMESPACE])
@@ -186,11 +247,11 @@ def portage_build(build_portage, images, verbose = False):
         commit = sp_run("sudo buildah commit --format oci --rm -q --squash " + sync_target + " " + dated_uri, verbose)
         add_latest = sp_run(" sudo buildah tag " + dated_uri + " " + latest_uri, verbose)
         if sync_target_run.call.returncode == 0 and commit.call.returncode == 0:
-            images.addBuilt(name, 0)
+            images.updateBuilt(name, 0)
             log.close()
             return 0
         else:
-            images.addBuilt(name, 1)
+            images.updateBuilt(name, 1)
             log.close()
             return 1
 
@@ -216,6 +277,7 @@ def catalyst_build(build_catalyst, images, portagedir, bindpath = None, verbose 
         print(bcolors.PROGRESS + bcolors.BOLD + "Building Catalyst" + bcolors.ENDC)
         log.write("Building Catalyst\n")
         name = "catalyst-cache"
+        images.addImage(name, image_type = 'bootstrapping')
         latest_nametag = name + ":latest"
         dated_nametag = name + ":" + DATE
         uri_base = ''.join([REGISTRY, NAMESPACE])
@@ -249,13 +311,13 @@ def catalyst_build(build_catalyst, images, portagedir, bindpath = None, verbose 
             print(bcolors.ISUCCESS + bcolors.BOLD + "Build of " + latest_uri + " succeeded." + bcolors.ENDC)
             log.write("Build of " + latest_uri + " succeeded.\n")
             log.close()
-            images.addBuilt(name, 0)
+            images.updateBuilt(name, 0)
             return 0
         else:
             print(bcolors.FAILURE + bcolors.BOLD + "Build of " + latest_uri + " failed." + bcolors.ENDC)
             log.write("Build of " + latest_uri + " failed\n")
             log.close()
-            images.addBuilt(name, 1)
+            images.updateBuilt(name, 1)
             return 1
 
 def stage3_bootstrap(build_initial, images, verbose = False):
@@ -263,6 +325,7 @@ def stage3_bootstrap(build_initial, images, verbose = False):
     if build_initial is True:
         log = open(LOGFILE, 'a', 1)
         name = "gentoo-stage3-amd64-hardened"
+        images.addImage(name, image_type = 'bootstrapping')
         print(bcolors.PROGRESS + bcolors.BOLD + "Bootstrapping stage3" + bcolors.ENDC)
         log.write("Bootstrapping stage3\n")
         uri = ''.join([REGISTRY, NAMESPACE, name])
@@ -292,11 +355,11 @@ def stage3_bootstrap(build_initial, images, verbose = False):
         sp_run("sudo buildah tag " + ''.join([REGISTRY, NAMESPACE, name, ":", DATE]) + " " + latest_uri, verbose)
         if copy_stage3.call.returncode == 0 and commit.call.returncode == 0:
             log.close()
-            images.addBuilt(name, 0)
+            images.updateBuilt(name, 0)
             return 0
         else:
             log.close()
-            images.addBuilt(name, 1)
+            images.updateBuilt(name, 1)
             return 1
 
 def stage3_spawn(build_initial, verbose = False):
@@ -313,6 +376,7 @@ def stage3_spawn(build_initial, verbose = False):
 def buildah_build(file, image_name, path, images, portagedir, verbose = False):
     """Build a buildah file"""
     log = open(LOGFILE, 'a', 1)
+    images.addImage(image_name)
     uri = ''.join([REGISTRY, NAMESPACE, image_name])
     uri_latest = ''.join([uri, ":latest"])
     uri_dated = ''.join([uri, ":", DATE])
@@ -325,14 +389,14 @@ def buildah_build(file, image_name, path, images, portagedir, verbose = False):
         log = open(LOGFILE, 'a', 1)
         log.write("Build of " + image_name + " succeeded!\n")
         log.close()
-        images.addBuilt(image_name, 0)
+        images.updateBuilt(image_name, 0)
         return 0
     else:
         print(bcolors.FAILURE + bcolors.BOLD + "Build of " + image_name + " failed." + bcolors.ENDC)
         log = open(LOGFILE, 'a', 1)
         log.write("Build of " + image_name + " failed.\n")
         log.close()
-        images.addBuilt(image_name, 1)
+        images.updateBuilt(image_name, 1)
         return 1
 
 def initial_build(build_initial, images, portagedir, verbose = False):
@@ -383,35 +447,56 @@ def cleanup(verbose = False):
         log.close()
         return 1
 
-def test_images(images, verbose = False):
+def test_images(test_images, images, verbose = False):
     """Test image"""
-    for image in images.listBuilt():
-        inspect = sp_run("buildah inspect " + image + "|jq -r '.OCIv1.config.Labels.\"nulllabs.docker.cmd.test\"'", verbose)
-        json = json.loads(inspect.output)
-        test_command = json['OCIv1']['config']['Labels']['nulllabs.docker.cmd.test']
-        print("Would run: " + test_command)
+    if test_images:
+        for image in images.listUntested():
+            image_olist = ""
+            inspect = sp_run("buildah inspect " + image, False)
+            for entry in inspect.output:
+                image_olist = image_olist + entry
+            image_json = json.loads(image_olist)
+            test_command = image_json['OCIv1']['config']['Labels']['nulllabs.docker.cmd.test']
+            print(test_command)
+            test = sp_run(test_command, verbose)
+            print(test.call.returncode)
+            images.updateTested(image, test.call.returncode)
+            if test.call.returncode == 0:
+                print(bcolors.SUCCESS + bcolors.BOLD + "" + bcolors.ENDC)
+            if test.call.returncode == 1:
+                print(bcolors.FAILURE + bcolors.BOLD + "" + bcolors.ENDC)
+        return 0
+    return 0
 
-def registry_push(images, verbose = False):
+def registry_push(disable_registry, images, verbose = False):
     """Push successfully built images to registry"""
-    log = open(LOGFILE, 'a', 1)
-    print(bcolors.PROGRESS + bcolors.BOLD + "Registry upload" + bcolors.ENDC)
-    log.write("Registry upload\n")
-    for image in images.listBuilt():
-        push_run = sp_run("sudo buildah push -q " + image + " " + ''.join(["docker://", image]), verbose)
-        nametag = image.rsplit(sep='/')[-1]
-        name = ''.join(nametag.rsplit(sep=':')[:-1])
-        images.updatePushed(name, push_run.call.returncode)
-        if push_run.call.returncode == 0:
-            print(bcolors.SUCCESS + bcolors.BOLD + "Successfully pushed " + image + bcolors.ENDC)
-        if push_run.call.returncode == 1:
-            print(bcolors.FAILURE + bcolors.BOLD + "Failed to push " + image + bcolors.ENDC)
-    log.close()
+    if not disable_registry:
+        log = open(LOGFILE, 'a', 1)
+        image_list = images.listBuilt()
+        if len(image_list) > 0:
+            print(bcolors.PROGRESS + bcolors.BOLD + "Registry upload" + bcolors.ENDC)
+            log.write("Registry upload\n")
+        append = "-q "
+        if verbose == True:
+            append = ""
+        for image in image_list:
+            log.write("Attempting to push: " + image + "\n")
+            push_run = sp_run("sudo buildah push " + append + image + " " + ''.join(["docker://", image]), verbose)
+            nametag = image.rsplit(sep='/')[-1]
+            name = ''.join(nametag.rsplit(sep=':')[:-1])
+            images.updatePushed(name, push_run.call.returncode)
+            if push_run.call.returncode == 0:
+                print(bcolors.SUCCESS + bcolors.BOLD + "Successfully pushed " + image + bcolors.ENDC)
+            if push_run.call.returncode == 1:
+                print(bcolors.FAILURE + bcolors.BOLD + "Failed to push " + image + bcolors.ENDC)
+        log.close()
+        return 0
     return 0
 
 ##Main
 if __name__ == "__main__":
     args = parse_arguments(sys.argv[1:])
-    images = imageList()
+    images = imageList(args)
     portage_build = portage_build(args.build_portage, images, verbose = args.verbose)
     portagedir = portage_overlay(args, verbose = args.verbose)
     catalyst_build(args.build_catalyst, images, portagedir, verbose = args.verbose)
@@ -419,8 +504,8 @@ if __name__ == "__main__":
     stage3 = stage3_spawn(args.build_initial, verbose = args.verbose)
     initial_build(args.build_initial, images, portagedir, verbose = args.verbose)
     project_build(args.build_targets, images, portagedir, verbose = args.verbose)
-    test_images(images, verbose = args.verbose)
-    registry_push(images, verbose = args.verbose)
+    test_images(args.test_images, images, verbose = args.verbose)
+    registry_push(args.disable_registry, images, verbose = args.verbose)
     status = images.statusList()
     if args.verbose == True:
         for line in status:

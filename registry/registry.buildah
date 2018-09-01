@@ -12,7 +12,7 @@ nulllabs.vcs-ref="$GHEAD" \
 nulllabs.vendor="NullLabs" \
 nulllabs.version="beta-0.0.1" \
 nulllabs.schema-version="1.0" \
-nulllabs.docker.cmd="docker run -d 4000:4000/tcp --name nulllabs-registry -l nulllabs.image=crucible.lab:4000/oci/registry crucible.lab:4000/oci/registry:latest" \
+nulllabs.docker.cmd="docker run -d 4000:4000/tcp --name nulllabs-registry -v /opt/docker-registry:/opt/ -l nulllabs.image=crucible.lab:4000/oci/registry crucible.lab:4000/oci/registry:latest" \
 nulllabs.docker.cmd.devel="docker run -it --name nulllabs-registry-tmp -l nulllabs.image=crucible.lab:4000/oci/registry --rm --entrypoint=/bin/bash crucible.lab:4000/oci/registry:latest" \
 nulllabs.docker.cmd.test="docker run -it --name nulllabs-registry-test -l nulllabs.image=crucible.lab:4000/oci/registry --rm --entrypoint=/usr/local/bin/test.sh crucible.lab:4000/oci/registry:latest" \
 nulllabs.docker.cmd.debug="docker exec -it nulllabs-registry bash" \

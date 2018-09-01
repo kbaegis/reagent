@@ -1,0 +1,14 @@
+*.swp
+build.log
+.stages/*
+!.stages/README
+!.stages/default
+!.stages/default/*.spec
+odl/dist/*
+.x509/*
+!.x509/README.md
+*/.x509*/*
+ceph/etc/*.keyring
+postgresql/sql/*
+!postgresql/sql/000-nulllabs.sql
+!postgresql/sql/011-nextcloud.sql

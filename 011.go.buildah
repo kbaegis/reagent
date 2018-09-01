@@ -19,16 +19,7 @@ nulllabs.docker.cmd.test="docker run -it --name nulllabs-go-test -l nulllabs.ima
 nulllabs.docker.cmd.debug="docker exec -it nulllabs-go bash" \
 nulllabs.docker.cmd.help="docker exec -it nulllabs-go /usr/local/bin/entrypoint.sh --help" \
 nulllabs.docker.params="REPO=,THREADS="
-ENV PORTAGE_BINHOST="https://crucible.lab/generic" \
-  PORTDIR="/usr/portage" \
-  PKGDIR="/usr/portage/packages/generic" \
-  FEATURES="binpkg-multi-instance" \
-  MAKEOPTS="-j$THREADS" \
-  EMERGE_DEFAULT_OPTS="-bg" \
-  GENTOO_MIRRORS="https://crucible.lab" \
-  SSL_CERT_FILE="/etc/ssl/certs/ca-certificates.crt" \
-  EDITOR="/usr/bin/vi" \
-  GOPATH="/root/.go" \
+ENV GOPATH="/root/.go" \
   GOBIN="/root/.go/bin"
 RUN mkdir $HOME/.go \
  && printf 'FEATURES="-usersandbox"\n' >> /etc/portage/env/nousersandbox.conf \

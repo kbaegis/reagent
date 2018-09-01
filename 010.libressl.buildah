@@ -23,15 +23,6 @@ nulllabs.docker.cmd.test="docker run -it --name nulllabs-libressl-test -l nullla
 nulllabs.docker.cmd.debug="docker exec -it nulllabs-libressl bash" \
 nulllabs.docker.cmd.help="docker exec -it nulllabs-libressl /usr/local/bin/entrypoint.sh --help" \
 nulllabs.docker.params="REPO=,THREADS="
-ENV PORTAGE_BINHOST="https://crucible.lab/generic" \
-  PORTDIR="/usr/portage" \
-  PKGDIR="/usr/portage/packages/generic" \
-  FEATURES="binpkg-multi-instance" \
-  MAKEOPTS="-j$THREADS" \
-  EMERGE_DEFAULT_OPTS="-bg" \
-  GENTOO_MIRRORS="https://crucible.lab" \
-  SSL_CERT_FILE="/etc/ssl/certs/ca-certificates.crt" \
-  EDITOR="/usr/bin/vi"
 ADD .x509/* /tmp/
 RUN echo 'USE="${USE} libressl"' >> /etc/portage/make.conf \
  && echo 'USE="${USE} libressl"' >> /etc/portage/make.conf.bak \
@@ -48,6 +39,7 @@ RUN echo 'USE="${USE} libressl"' >> /etc/portage/make.conf \
  && echo CURL_SSL='libressl' >>/etc/portage/make.conf \
  && FETCHCOMMAND='wget -t 3 -T 60 --passive-ftp --no-check-certificate -O "${DISTDIR}/${FILE}" "${URI}"' RESUMECOMMAND='wget -c -t 3 -T 60 --passive-ftp --no-check-certificate -O "${DISTDIR}/${FILE}" "${URI}"' emerge @preserved-rebuild \
  && SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt emerge net-misc/curl \
+ && $HOME/.build/rsync.sh \
  && SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt emerge --depclean --with-bdeps=n \
  && for i in $(ls /tmp/*.gpg);do gpg --import $i;done \
  && for i in $(ls /tmp/*.pem);do file=$(basename $i);cp $i /usr/local/share/ca-certificates/$file.crt;done \
