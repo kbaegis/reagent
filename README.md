@@ -7,7 +7,7 @@ buildah (OCI)
 
 The goal of this project was to create an end-to-end build pipeline that has few or no proprietary or "big shop" dependencies. It's based on gentoo and the libpod/buildah toolchain which allow you to build containers within a container thereby keeping all build dependencies isolated. I also self-imposed the requirement of having all components capable of being self-hosted, so no required tie-ins to public cloud providers. 
 
-Perusing the codebase, the largest contribution of this project to date is the flexible imageList class located in pybuild.py. It allows you to set, track, and update states for containers based on image classification. For example, if you'd like to create a stem and leaf container pipeline, add 20 new build stages whereby you run it through a battery of tests, simply import the pybuild.py module and override the appropriate variables and you're in business. 
+Perusing the codebase, the largest contribution of this project to date is the flexible imageList class located in pybuild.py. It allows you to set, track, and update states for containers based on image classification. For example, if you'd like to create a complex series of image dependencies with dockerfiles, add 20 new build stages whereby you run it through a battery of tests, simply import the pybuild.py module and override the appropriate class variables and you're in business.
 
 Ultimately, the states and operations tracked by default are: Building the image, testing the image, running a vulnerability scanner (currently unimplemented), and pushing the image to a registry. 
 
@@ -22,22 +22,27 @@ I will eventually build a helm chart so that all of the components are parameter
 
 ## Build stages
 
-buildah-gentoo is a wrapper for several utilties that allow you to incorporate a full end-to-end build into a container.
+Reagent acts as wrapper for several utilties that allow you to incorporate a full end-to-end build into a container.
 
--v --verbose
-Print the output from the build commands to the terminal. Even if verbose is not enabled, the file build.log should contain the full output and should be used if something breaks.
+usage: build [-h] [-v] [-p] [-c] [-i] [-b BUILD_TARGETS [BUILD_TARGETS ...]]
+             [-t] [-T] [-R]
 
--p --portage
-Build a container with the contents of /usr/portage/
-
--c --catalyst
-Build catalyst stages 1-3 using specfiles and an existing stage3. A variable defined in pybuild.py determines where it looks for this.
-
--i --initial
-Build all container images in the root directory in the numbered order. Do this for your core image layers. Serveral examples are included [go, java, libressl, stage3, etc]
-
--b --build (image1 image2 ... imageN)
-Build select images matching regular expressions. ** Note - '*' and 'all' are converted to the regular expression '.*', so -b all will select all non-initial images, where `-b a+.*` will build anything with the first letter 'a'.
+optional arguments:
+  -h, --help            show this help message and exit
+  -v, --verbose         Show verbose output from subprocess commands.
+  -p, --portage         Regenerate a container with synced portage contents.
+  -c, --catalyst        Build contents of .stages/default/ with catalyst using
+                        specfiles.
+  -i, --initial         Build all numbered buildah files in the root directory
+                        in order with buildah.
+  -b BUILD_TARGETS [BUILD_TARGETS ...], --build BUILD_TARGETS [BUILD_TARGETS ...]
+                        Build selected contents matched by regex. Use 'all' to
+                        build all leaf containers.
+  -t, --test            Test images using OCIv1.config.Labels instruction
+                        before pushing them to registry.
+  -T, --vulnerability   Run vulnerability tests against images.
+  -R, --disable-registry
+                        Disable push to registry and cleanup.
 
 ## Design
 
