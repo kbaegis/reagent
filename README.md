@@ -24,6 +24,7 @@ I will eventually build a helm chart so that all of the components are parameter
 
 Reagent acts as wrapper for several utilties that allow you to incorporate a full end-to-end build into a container.
 
+```
 usage: build [-h] [-v] [-p] [-c] [-i] [-b BUILD_TARGETS [BUILD_TARGETS ...]]
              [-t] [-T] [-R]
 
@@ -43,6 +44,7 @@ optional arguments:
   -T, --vulnerability   Run vulnerability tests against images.
   -R, --disable-registry
                         Disable push to registry and cleanup.
+```
 
 ## Design
 
