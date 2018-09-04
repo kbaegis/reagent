@@ -12,3 +12,4 @@ ceph/etc/*.keyring
 postgresql/sql/*
 !postgresql/sql/000-nulllabs.sql
 !postgresql/sql/011-nextcloud.sql
+__pycache__/*

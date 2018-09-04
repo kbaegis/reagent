@@ -1,8 +1,6 @@
 #!/usr/bin/sudo /usr/bin/python3
 
-"""
-This python program can be leveraged to create a CI/CD pipeline for gentoo images.
-"""
+"""This python program can be leveraged to create a CI/CD pipeline for gentoo images."""
 
 import argparse
 import sys
@@ -14,6 +12,8 @@ import re
 import shlex
 import json
 import signal
+import timeit
+import readline
 
 #Please adjust to fit your environment
 SCRIPTPATH = os.path.dirname(os.path.realpath(__file__))
@@ -33,6 +33,7 @@ for root, dirnames, filenames in os.walk(SCRIPTPATH):
             BUILDAH_FILES.append(os.path.splitext(os.path.relpath(os.path.join(root, filename), SCRIPTPATH))[0])
 PROJECT_FILES = set(BUILDAH_FILES) #a set of *..buildah files located under the root directory and excludes INITIAL_FILES
 LOGFILE = ''.join([SCRIPTPATH, '/build.log']) #logfile used throughout
+TESTLABEL = 'nulllabs.cri.cmd.test' #What label your dockerfiles use to store the test commands
 
 ##Return Convention:
 # 0: success
@@ -41,6 +42,7 @@ LOGFILE = ''.join([SCRIPTPATH, '/build.log']) #logfile used throughout
 # -2: disabled
 
 class bcolors:
+    """Class containing terminal codes for colorized output."""
     ISUCCESS = '\033[94m' #intermediate success; blue
     SUCCESS = '\033[92m' #success; green
     VOUT = '\033[0;37m' #Verbose output; White/Grey
@@ -51,14 +53,13 @@ class bcolors:
     UNDERLINE = '\033[4m' #Underline
 
 class subprocessReturn(object):
+    """Class containing both the Popen state tracking (call) and a list of output lines (output) from a subprocess run."""
     def __init__(self, call, output):
         self.call = call
         self.output = output
 
 class imageList(object):
-    """
-    Class tracking images in various container image states.
-    """
+    """Class tracking images in various container image states."""
     def __init__(self, args):
         self.images = {}
         self.base_uri = ''.join([REGISTRY, NAMESPACE])
@@ -79,9 +80,7 @@ class imageList(object):
             self.enablement['default']['vuln_test'] = -2
 
     def addImage(self, name, image_type = 'default'):
-        """
-        Initial states are assigned by image_type -> enablement -> add_properties.
-        """
+        """Method to track a new image. Initial states are assigned by image_type -> enablement -> add_properties."""
         uri = self.base_uri + name
         enablement = self.enablement
         for tag in self.tags:
@@ -92,22 +91,28 @@ class imageList(object):
                 self.images[name + tag].update({'push status': -2})
 
     def updateBuilt(self, name, build_status):
+        """Simple method to update the state of the build."""
         for tag in self.tags:
             self.images[name + tag].update({'build status': build_status})
     
     def updatePushed(self, name, push_status):
+        """Simple method to update the push status of the build."""
         for tag in self.tags:
             self.images[name + tag].update({'push status': push_status})
     
     def updateTested(self, name, test_status):
+        """Simple method to update the test status of the build."""
+        #
         for tag in self.tags:
             self.images[name + tag].update({'test status': test_status})
     
     def updateVulnTested(self, name, vuln_test_status):
+        """Simple method to update the vulnerability test status of the build."""
         for tag in self.tags:
             self.images[name + tag].update({'vuln test status': vuln_test_status})
 
     def statusList(self):
+        """Method to return a list of image states."""
         failure = bcolors.FAILURE + bcolors.BOLD
         success = bcolors.SUCCESS + bcolors.BOLD
         isuccess = bcolors.ISUCCESS
@@ -147,6 +152,7 @@ class imageList(object):
         return returnlist
 
     def listBuilt(self):
+        """Method to return a list of successfully built images."""
         returnlist = []
         for name, value in self.images.items():
             uri = ''.join([self.images[name]['uri'], ':', self.images[name]['tag']])
@@ -156,16 +162,25 @@ class imageList(object):
         return returnlist
 
     def listUntested(self):
+        """Method to return a list of images with a pending image test state."""
+        testlist = []
         returnlist = []
-        for name, value in self.images.items():
-            uri = ''.join([self.images[name]['uri'], ':', self.images[name]['tag']])
-            build_status = self.images[name]['build status']
-            test_status = self.images[name]['test status']
+        unique_uri = set()
+        for key, value in self.images.items():
+            uri = self.images[key]['uri']
+            tag = self.images[key]['tag']
+            if not uri in unique_uri:
+                testlist.append(uri + ':' + tag)
+                unique_uri.add(uri)
+        for uri in testlist:
+            build_status = self.images[uri]['build status']
+            test_status = self.images[uri]['test status']
             if build_status == 0 and test_status == -1:
-                returnlist.append(uri)
+                returnlist.append(name)
         return returnlist
 
     def listFailed(self):
+        """Method to return a list of images with any failed states."""
         returnlist = []
         for name, value in self.images.items():
             uri = ''.join([self.images[name]['uri'], ':', self.images[name]['tag']])
@@ -182,6 +197,7 @@ class imageList(object):
         return returnlist
 
     def listPushed(self):
+        """Method to return a list of images with a successful push state."""
         returnlist = []
         for name, value in self.images.items():
             uri = ''.join([self.images[name]['uri'], ':', self.images[name]['tag']])
@@ -190,6 +206,51 @@ class imageList(object):
             if push_status == 0:
                 returnlist.append(uri)
         return returnlist
+
+class handler:
+    """Class to track forked and child processes run by sp_run."""
+    def __init__(self):
+        self.processList = []
+        returnlist = []
+        for name, value in self.images.items():
+            uri = ''.join([self.images[name]['uri'], ':', self.images[name]['tag']])
+            build_status = self.images[name]['build status']
+            push_status = self.images[name]['push status']
+            if push_status == 0:
+                returnlist.append(uri)
+        return returnlist
+
+class handler:
+    """Class to track forked and child processes run by sp_run."""
+    def __init__(self):
+        self.processList = []
+    
+    def handle_child(self, child):
+        self.processList.append(child)
+
+    def abandon_child(self, child):
+        self.processList.remove(child)
+
+def signal_handler(signum, frame):
+    """Handles SIG*"""
+    signal.signal(2, signal.SIG_IGN)
+    status = images.statusList()
+    for line in status:
+        print(line)
+    while True:
+        confirm = input('Would you like to terminate now? [(y)es/(n)o]')
+        if confirm == 'y' or confirm == 'yes':
+            try:
+                print(bcolors.PROGRESS + bcolors.BOLD + "Performing cleanup." + bcolors.ENDC)
+                cleanup(images.features)
+            except:
+                pass
+            for child in children.processList:
+                child.terminate()
+            sys.exit(0)
+        elif confirm == 'n' or confirm == 'no':
+            signal.signal(2, signal_handler)
+            return 0
 
 def parse_arguments(arguments):
     """Parse arguments from cli-invocation"""
@@ -201,15 +262,22 @@ def parse_arguments(arguments):
     parser.add_argument('-b', '--build', dest='build_targets', nargs="+", help="Build selected contents matched by regex. Use 'all' to build all leaf containers.")
     parser.add_argument('-t', '--test', dest='test_images', action='store_true', help="Test images using OCIv1.config.Labels instruction before pushing them to registry.")
     parser.add_argument('-T', '--vulnerability', dest='vuln_test_images', action='store_true', help="Run vulnerability tests against images.")
-    parser.add_argument('-R', '--disable-registry', dest='disable_registry', action='store_true', help="Disable push to registry and cleanup.")
+    parser.add_argument('-R', '--disable-registry', dest='disable_registry', action='store_true', help="Disable push to registry.")
     args = parser.parse_args(arguments)
     return args
 
 def sp_run(command, verbose = False):
+    """Command wraps and executes commands passed to it."""
     output_list = []
     with open(LOGFILE, 'a', 1) as log:
-        subprocess_call = subprocess.Popen(shlex.split(command), stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-        #with io.TextIOWrapper(subprocess_call.stdout, write_through = True, encoding = "ascii", errors = 'ignore') as wrapper:  
+        subprocess_call = subprocess.Popen(shlex.split(command), start_new_session=True, stdin=None, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        try:
+            children.handle_child(subprocess_call) #Tracks "start_new_session instances, divorces SIG* from running subprocesses
+        except NameError:
+            children = handler()
+            children.handle_child(subprocess_call)
+        else:
+            print("Untracked rugrat at pid: " + subprocess_call.pid)
         with io.TextIOWrapper(subprocess_call.stdout, line_buffering = True, encoding = "ascii", errors = 'ignore') as wrapper:  
             for line in wrapper:
                 try:
@@ -223,7 +291,9 @@ def sp_run(command, verbose = False):
                     tb = sys.exc_info()[2]
                     pass
             subprocess_call.wait()
+            children.abandon_child(subprocess_call)
     return subprocessReturn(subprocess_call, output_list)
+    #Currently needs a mechanism to send Popen.send_signal
 
 def portage_build(build_portage, images, verbose = False):
     """Build portage container from host snapshot"""
@@ -456,10 +526,16 @@ def test_images(test_images, images, verbose = False):
             for entry in inspect.output:
                 image_olist = image_olist + entry
             image_json = json.loads(image_olist)
-            test_command = image_json['OCIv1']['config']['Labels']['nulllabs.docker.cmd.test']
+            try:
+                test_command = image_json['OCIv1']['config']['Labels'][TESTLABEL]
+            except KeyError:
+                test_command = "podman --cgroup-manager cgroupfs run --entrypoint=/usr/local/bin/test.sh " + image
             print(test_command)
             test = sp_run(test_command, verbose)
             print(test.call.returncode)
+            print(image)
+            nametag = image.rsplit(sep='/')[-1]
+            name = ''.join(nametag.rsplit(sep=':')[:-1])
             images.updateTested(image, test.call.returncode)
             if test.call.returncode == 0:
                 print(bcolors.SUCCESS + bcolors.BOLD + "" + bcolors.ENDC)
@@ -495,6 +571,8 @@ def registry_push(disable_registry, images, verbose = False):
 
 ##Main
 if __name__ == "__main__":
+    children = handler()
+    signal.signal(2, signal_handler)
     args = parse_arguments(sys.argv[1:])
     images = imageList(args)
     portage_build = portage_build(args.build_portage, images, verbose = args.verbose)

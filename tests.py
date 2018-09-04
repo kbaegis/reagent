@@ -18,6 +18,26 @@ TESTIMAGE = "alpine:edge"
 DATE = time.strftime("%Y-%m-%d")
 CATALYST_BIND_PATH = ''.join([SCRIPTPATH, '/.tmpcatalyst'])
 
+class lcolors:
+    ISUCCESS = '\033[94m' #intermediate success; blue
+    SUCCESS = '\033[92m' #success; green
+    VOUT = '\033[0;37m' #Verbose output; White/Grey
+    PROGRESS = '\033[33m' #Function progress; Yellow
+    FAILURE = '\033[31m' #Failure; Red
+    ENDC = '\033[0m' #Color Reset
+    BOLD = '\033[1m' #Bold
+    UNDERLINE = '\033[4m' #Underline
+
+#Override bcolors to facilitate string matching in asserts below
+bcolors.ISUCCESS = ''
+bcolors.SUCCESS = ''
+bcolors.VOUT = ''
+bcolors.PROGRESS = ''
+bcolors.FAILURE = ''
+bcolors.ENDC = ''
+bcolors.BOLD = ''
+bcolors.UNDERLINE = ''
+
 class unitTests(unittest.TestCase):
     """All tests responsible for testing the internal components of individual functions."""
 
@@ -53,22 +73,28 @@ class unitTests(unittest.TestCase):
         date = image_utest.date
         base_uri = image_utest.base_uri
         initial = image_utest.statusList()
+        image_utest.tags = ['test']
         image_utest.addImage('default')
         image_utest.addImage('bootstrapping','bootstrapping')
         baseline = image_utest.statusList()
+        output = ''
+        for line in baseline:
+            output = output + line + '\n'
         self.assertEqual(date, DATE)
         self.assertEqual(base_uri, ''.join([REGISTRY, NAMESPACE]))
+        self.assertIn(base_uri + 'default:test', output)
+        self.assertIn(base_uri + 'bootstrapping:test', output)
     
     def test_imageList_nop(self):
         """Test to ensure that imageList methods function appropriately."""
         image_utest = imageList(verboseargs)
         image_utest.tags = ['test']
         image_utest.add_properties = {} #Tests no state
-        image_utest.addImage('default')
-        image_utest.addImage('bootstrapping','bootstrapping')
         noptracking = image_utest.statusList()
-        self.assertEqual(0, 0)
-        #FIXME
+        output = ''
+        for line in noptracking:
+            output = output + line + '\n'
+        self.assertIn('No images built.', output)
     
     def test_imageList_override(self):
         """Test to ensure that imageList methods function appropriately."""
@@ -76,15 +102,6 @@ class unitTests(unittest.TestCase):
         image_utest.tags = ['test']
         image_utest.add_properties = {'test_disabled': 'xdisabled', 'test_pending': 'xpending', 'test_pass': 'xpass', 'test_fail': 'xfail'}
         image_utest.enablement = {'default': {'xdisabled': -2, 'xpending': -1, 'xpass': 0, 'xfail': 2} ,'test': {'xdisabled': 0, 'xpending': 0, 'xpass': 0, 'xfail': 0}}
-        #Override bcolors to facilitate string matching in asserts below
-        bcolors.ISUCCESS = ''
-        bcolors.SUCCESS = ''
-        bcolors.VOUT = ''
-        bcolors.PROGRESS = ''
-        bcolors.FAILURE = ''
-        bcolors.ENDC = ''
-        bcolors.BOLD = ''
-        bcolors.UNDERLINE = ''
         image_utest.addImage('default')
         image_utest.addImage('test','test')
         override = image_utest.statusList()
@@ -96,8 +113,49 @@ class unitTests(unittest.TestCase):
         self.assertIn('test_pass:Complete', output)
         self.assertIn('test_fail:Failed', output)
     
-    def test_imageList_methods(self):
+    def test_imageList_update_methods(self):
         """Test to ensure that update* methods function appropriately."""
+        image_utest = imageList(verboseargs)
+        image_utest.tags = ['test']
+        image_utest.add_properties = {'build status': 'method_test', 'push status': 'method_test', 'test status': 'method_test', 'vuln test status': 'method_test'}
+        image_utest.enablement = {'default': {'method_test': -1}}
+        image_utest.addImage('default')
+        initial = image_utest.statusList()
+        initial_output = ''
+        for line in initial:
+            initial_output = initial_output + line + '\n'
+        image_utest.updateBuilt('default', 0)
+        image_utest.updatePushed('default', 0)
+        image_utest.updateTested('default', 0)
+        image_utest.updateVulnTested('default', 0)
+        xpass = image_utest.statusList()
+        xpass_output = ''
+        for line in xpass:
+            xpass_output = xpass_output + line + '\n'
+        image_utest.updateBuilt('default', 1)
+        image_utest.updatePushed('default', 1)
+        image_utest.updateTested('default', 1)
+        image_utest.updateVulnTested('default', 1)
+        xfail = image_utest.statusList()
+        xfail_output = ''
+        for line in xfail:
+            xfail_output = xfail_output + line + '\n'
+        self.assertIn('Image: ' + image_utest.base_uri + 'default:test', initial_output)
+        self.assertIn('build status:Pending', initial_output)
+        self.assertIn('push status:Pending', initial_output)
+        self.assertIn('test status:Pending', initial_output)
+        self.assertIn('vuln test status:Pending', initial_output)
+        self.assertIn('build status:Complete', xpass_output)
+        self.assertIn('push status:Complete', xpass_output)
+        self.assertIn('test status:Complete', xpass_output)
+        self.assertIn('vuln test status:Complete', xpass_output)
+        self.assertIn('build status:Failed', xfail_output)
+        self.assertIn('push status:Failed', xfail_output)
+        self.assertIn('test status:Failed', xfail_output)
+        self.assertIn('vuln test status:Failed', xfail_output)
+    
+    def test_imageList_list_methods(self):
+        """Test to ensure that list* methods function appropriately."""
         self.assertEqual(0, 0)
         #FIXME
 
@@ -286,6 +344,8 @@ def proceduralSuite():
     return suite
 
 if __name__ == '__main__':
+    children = handler()
+    signal.signal(2, signal_handler)
     arguments = ["-v", "-p", "-c", "-i", "-b", "all"]
     verboseargs = parse_arguments(arguments)
     arguments = ["-v", "-R"]
@@ -298,9 +358,9 @@ if __name__ == '__main__':
     except OSError:
         pass
     runner = unittest.TextTestRunner(verbosity=2, warnings='always')
-    print(bcolors.PROGRESS + bcolors.BOLD +"Running codepath tests for disabled functions.\n" + bcolors.ENDC)
+    print(lcolors.PROGRESS + lcolors.BOLD +"Running codepath tests for disabled functions.\n" + lcolors.ENDC)
     runner.run(nopSuite())
-    print(bcolors.PROGRESS + bcolors.BOLD +"Running unit tests.\n" + bcolors.ENDC)
+    print(lcolors.PROGRESS + lcolors.BOLD +"Running unit tests.\n" + lcolors.ENDC)
     runner.run(unitSuite())
-    #print(bcolors.PROGRESS + bcolors.BOLD +"Running procedural functional tests.\n" + bcolors.ENDC)
+    #print(lcolors.PROGRESS + lcolors.BOLD +"Running procedural functional tests.\n" + lcolors.ENDC)
     #runner.run(proceduralSuite())

@@ -18,7 +18,13 @@ nulllabs.docker.cmd.devel="docker run -it --network host --privileged -v /var/li
 nulllabs.docker.cmd.test="docker run -it --network host --privileged -v /var/lib/ceph/:/var/lib/ceph/ -v /dev/:/dev/ -v /sys/:/sys/ --name nulllabs-ceph-tmp -l nulllabs.image=crucible.lab:4000/oci/ceph --rm --entrypoint=/usr/local/bin/test.sh --network host --privileged crucible.lab:4000/oci/ceph:latest" \
 nulllabs.docker.cmd.debug="docker exec -it nulllabs-ceph bash" \
 nulllabs.docker.cmd.help="docker exec -it nulllabs-ceph /usr/local/bin/entrypoint.sh --help" \
-nulllabs.docker.params="REPO=,THREADS="
+nulllabs.docker.params="REPO=,THREADS=" \
+nulllabs.cri.cmd="" \
+nulllabs.cri.cmd.devel="podman --cgroup-manager cgroupfs run --entrypoint=/bin/bash crucible.lab:4000/oci/build:latest" \
+nulllabs.cri.cmd.test="podman --cgroup-manager cgroupfs run --entrypoint=/usr/local/bin/test.sh crucible.lab:4000/oci/build:latest" \
+nulllabs.cri.cmd.debug="" \
+nulllabs.cri.cmd.help="" \
+nulllabs.cri.params=""
 ENV MASTER="crucible.lab"
 
 RUN echo '=sys-cluster/ceph-12.2.5 ~amd64' >/etc/portage/package.accept_keywords \
