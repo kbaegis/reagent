@@ -84,32 +84,32 @@ class imageList(object):
         uri = self.base_uri + name
         enablement = self.enablement
         for tag in self.tags:
-            self.images[name + tag] = {'uri': uri, 'tag': tag, 'type': image_type} #Basic properties
+            self.images[name + ':' + tag] = {'uri': uri, 'tag': tag, 'type': image_type} #Basic properties
             for key, value in self.add_properties.items():
-                self.images[name + tag][key] = enablement[image_type][value]
+                self.images[name + ':' + tag][key] = enablement[image_type][value]
             if self.features.disable_registry == True:
-                self.images[name + tag].update({'push status': -2})
+                self.images[name + ':' + tag].update({'push status': -2})
 
     def updateBuilt(self, name, build_status):
         """Simple method to update the state of the build."""
         for tag in self.tags:
-            self.images[name + tag].update({'build status': build_status})
+            self.images[name + ':' + tag].update({'build status': build_status})
     
     def updatePushed(self, name, push_status):
         """Simple method to update the push status of the build."""
         for tag in self.tags:
-            self.images[name + tag].update({'push status': push_status})
+            self.images[name + ':' + tag].update({'push status': push_status})
     
     def updateTested(self, name, test_status):
         """Simple method to update the test status of the build."""
         #
         for tag in self.tags:
-            self.images[name + tag].update({'test status': test_status})
+            self.images[name + ':' + tag].update({'test status': test_status})
     
     def updateVulnTested(self, name, vuln_test_status):
         """Simple method to update the vulnerability test status of the build."""
         for tag in self.tags:
-            self.images[name + tag].update({'vuln test status': vuln_test_status})
+            self.images[name + ':' + tag].update({'vuln test status': vuln_test_status})
 
     def statusList(self):
         """Method to return a list of image states."""
@@ -170,13 +170,14 @@ class imageList(object):
             uri = self.images[key]['uri']
             tag = self.images[key]['tag']
             if not uri in unique_uri:
-                testlist.append(uri + ':' + tag)
+                name = uri.rsplit(sep='/')[-1]
+                testlist.append(name + ':' + tag)
                 unique_uri.add(uri)
         for uri in testlist:
             build_status = self.images[uri]['build status']
             test_status = self.images[uri]['test status']
             if build_status == 0 and test_status == -1:
-                returnlist.append(name)
+                returnlist.append(uri)
         return returnlist
 
     def listFailed(self):
@@ -196,14 +197,21 @@ class imageList(object):
                 returnlist.append(uri)
         return returnlist
 
-    def listPushed(self):
+    def listUnpushed(self):
         """Method to return a list of images with a successful push state."""
         returnlist = []
         for name, value in self.images.items():
             uri = ''.join([self.images[name]['uri'], ':', self.images[name]['tag']])
-            build_status = self.images[name]['build status']
+            failures = 0
+            failable = []
             push_status = self.images[name]['push status']
-            if push_status == 0:
+            for key, value in self.images[name].items():
+                failable.append(key)
+            for item in failable[3:]:
+                value = self.images[name][item]
+                if value > 0:
+                    failures = failures + 1
+            if push_status == 0 and falures == 0:
                 returnlist.append(uri)
         return returnlist
 
@@ -522,7 +530,7 @@ def test_images(test_images, images, verbose = False):
     if test_images:
         for image in images.listUntested():
             image_olist = ""
-            inspect = sp_run("buildah inspect " + image, False)
+            inspect = sp_run("buildah inspect " + images.base_uri + image, False)
             for entry in inspect.output:
                 image_olist = image_olist + entry
             image_json = json.loads(image_olist)
@@ -530,13 +538,10 @@ def test_images(test_images, images, verbose = False):
                 test_command = image_json['OCIv1']['config']['Labels'][TESTLABEL]
             except KeyError:
                 test_command = "podman --cgroup-manager cgroupfs run --entrypoint=/usr/local/bin/test.sh " + image
-            print(test_command)
             test = sp_run(test_command, verbose)
-            print(test.call.returncode)
-            print(image)
             nametag = image.rsplit(sep='/')[-1]
             name = ''.join(nametag.rsplit(sep=':')[:-1])
-            images.updateTested(image, test.call.returncode)
+            images.updateTested(name, test.call.returncode)
             if test.call.returncode == 0:
                 print(bcolors.SUCCESS + bcolors.BOLD + "" + bcolors.ENDC)
             if test.call.returncode == 1:
