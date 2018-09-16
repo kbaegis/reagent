@@ -1,28 +1,40 @@
 FROM crucible.lab:4000/oci/libressl:latest
+ARG GENESIS="crucible.lab:4000/oci/libressl"
 ARG BDATE="$(date --rfc-3339=date)"
 ARG GHEAD="$(git rev-parse HEAD)"
-LABEL nulllabs.build-date="$BDATE" \
-nulllabs.name="pdns" \
-nulllabs.maintainer="kbaegis@gmail.com" \
-nulllabs.description="NullLabs pdns container" \
-nulllabs.usage="https://services.home/git/NullLabs/oci/src/master/pdns/README.md" \
-nulllabs.url="https://services.home/git/NullLabs/oci/src/master/pdns/README.md" \
-nulllabs.vcs-url="https://services.home/git/NullLabs/oci/src/master/pdns/" \
-nulllabs.vcs-ref="$GHEAD" \
-nulllabs.vendor="NullLabs" \
-nulllabs.version="beta-0.0.1" \
-nulllabs.schema-version="1.0" \
-nulllabs.docker.cmd="docker run -d -p 53:53/tcp -p 53:53/udp -p 8081:8081 --name nulllabs-pdns -l nulllabs.image=crucible.lab:4000/oci/pdns crucible.lab:4000/oci/pdns:latest" \
-nulllabs.docker.cmd.devel="docker run -it --name nulllabs-pdns-tmp -l nulllabs.image=crucible.lab:4000/oci/pdns --rm --entrypoint=/bin/bash crucible.lab:4000/oci/pdns:latest" \
-nulllabs.docker.cmd.test="docker run -it --name nulllabs-pdns-test -l nulllabs.image=crucible.lab:4000/oci/pdns --rm --entrypoint=/usr/local/bin/test.sh crucible.lab:4000/oci/pdns:latest" \
-nulllabs.docker.cmd.debug="docker exec -it nulllabs-pdns bash" \
-nulllabs.docker.cmd.help="docker exec -it nulllabs-pdns /usr/local/bin/entrypoint.sh --help" \
-nulllabs.docker.params="REPO=,THREADS="
-ENV RECURSOR='8.8.8.8'
+ARG REPO="https://server.lab/git"
+ARG NAME="nginx"
+ARG URI="crucible.lab:4000/oci/nginx"
+ARG NAMESPACE="nulllabs"
+LABEL $NAMESPACE.build-date="$BDATE" \
+  $NAMESPACE.name="$NAME" \
+  $NAMESPACE.maintainer="kbaegis@gmail.com" \
+  $NAMESPACE.description="NullLabs PowerDNS." \
+  $NAMESPACE.usage="https://$REPO/NullLabs/oci/src/master/$NAME/README.md" \
+  $NAMESPACE.url="https://$REPO/NullLabs/oci/src/master/$NAME/README.md" \
+  $NAMESPACE.vcs-url="https://services.home/git/NullLabs/oci/src/master/$NAME/" \
+  $NAMESPACE.vcs-ref="$GHEAD" \
+  $NAMESPACE.vendor="NullLabs" \
+  $NAMESPACE.version="beta-0.0.2" \
+  jNAMESPACE.schema-version="1.0" \
+  $NAMESPACE.docker.cmd="docker run -d -p 53:53/tcp -p 53:53/udp -p 8081:8081 --restart always --name $NAMESPACE-$NAME -l $NAMESPACE.image=$URI $URI:latest" \
+  $NAMESPACE.docker.cmd.devel="docker run -it -p 53:53/tcp -p 53:53/udp -p 8081:8081 --rm --name $NAMESPACE-$NAME-dev -l $NAMESPACE.image=$URI $URI:latest" \
+  $NAMESPACE.docker.cmd.test="docker run -it -p 53:53/tcp -p 53:53/udp -p 8081:8081 --rm --name $NAMESPACE-$NAME-test --entrypoint=/usr/local/bin/test.sh -l $NAMESPACE.image=$URI $URI:latest" \
+  $NAMESPACE.docker.cmd.debug="docker exec -it $NAMESPACE-$NAME bash" \
+  $NAMESPACE.docker.cmd.help="docker exec -it $NAMESPACE-$NAME /usr/local/bin/entrypoint.sh --help" \
+  $NAMESPACE.docker.params="" \
+  $NAMESPACE.cri.cmd="" \
+  $NAMESPACE.cri.cmd.devel="podman --cgroup-manager cgroupfs run --entrypoint=/bin/bash $URI:latest" \
+  $NAMESPACE.cri.cmd.test="podman --cgroup-manager cgroupfs run --entrypoint=/usr/local/bin/test.sh $URI:latest" \
+  $NAMESPACE.cri.cmd.debug="" \
+  $NAMESPACE.cri.cmd.help="" \
+  $NAMESPACE.cri.params=""
+ENV RECURSOR='8.8.8.8' \
+  GENESIS="$GENESIS:$BDATE ($GHEAD)"
 
 ##Build
 RUN printf 'net-dns/pdns geoip ldap libressl lua mysql postgres sqlite tools\ndev-db/mariadb -bindist -openssl -server\ndev-db/mysql -openssl -server\ndev-db/postgresql -server\nvirtual/mysql -server' >/etc/portage/package.use/pdns \
- && emerge -bg net-dns/pdns \
+ && emerge -bg net-dns/pdns net-dns/pdns-recursor \
  && $HOME/.build/finalize.sh
 ADD powerdns/* /etc/powerdns/
 ADD bin/* /usr/local/bin/

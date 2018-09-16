@@ -1,32 +1,36 @@
 #FROM crucible.lab:4000/gentoo/libressl:latest
 FROM crucible.lab:4000/oci/portage:latest
+ARG GENESIS="crucible.lab:4000/oci/portage"
 ARG BDATE="$(date --rfc-3339=date)"
 ARG GHEAD="$(git rev-parse HEAD)"
-LABEL nulllabs.build-date="$BDATE" \
-nulllabs.name="ceph" \
-nulllabs.maintainer="kbaegis@gmail.com" \
-nulllabs.description="NullLabs ceph container" \
-nulllabs.usage="https://services.home/git/NullLabs/oci/src/master/ceph/README.md" \
-nulllabs.url="https://services.home/git/NullLabs/oci/src/master/ceph/README.md" \
-nulllabs.vcs-url="https://services.home/git/NullLabs/oci/src/master/ceph/" \
-nulllabs.vcs-ref="$GHEAD" \
-nulllabs.vendor="NullLabs" \
-nulllabs.version="beta-0.0.1" \
-nulllabs.schema-version="1.0" \
-nulllabs.docker.cmd="docker run -d --network host --privileged -v /var/lib/ceph/:/var/lib/ceph/ -v /dev/:/dev/ -v /sys/:/sys/ --name nulllabs-ceph -l nulllabs.image=crucible.lab:4000/oci/ceph --restart always crucible.lab:4000/oci/ceph:latest" \
-nulllabs.docker.cmd.devel="docker run -it --network host --privileged -v /var/lib/ceph/:/var/lib/ceph/ -v /dev/:/dev/ -v /sys/:/sys/ --name nulllabs-ceph-tmp -l nulllabs.image=crucible.lab:4000/oci/ceph --rm --entrypoint=/bin/bash --network host --privileged crucible.lab:4000/oci/ceph:latest" \
-nulllabs.docker.cmd.test="docker run -it --network host --privileged -v /var/lib/ceph/:/var/lib/ceph/ -v /dev/:/dev/ -v /sys/:/sys/ --name nulllabs-ceph-tmp -l nulllabs.image=crucible.lab:4000/oci/ceph --rm --entrypoint=/usr/local/bin/test.sh --network host --privileged crucible.lab:4000/oci/ceph:latest" \
-nulllabs.docker.cmd.debug="docker exec -it nulllabs-ceph bash" \
-nulllabs.docker.cmd.help="docker exec -it nulllabs-ceph /usr/local/bin/entrypoint.sh --help" \
-nulllabs.docker.params="REPO=,THREADS=" \
-nulllabs.cri.cmd="" \
-nulllabs.cri.cmd.devel="podman --cgroup-manager cgroupfs run --entrypoint=/bin/bash crucible.lab:4000/oci/build:latest" \
-nulllabs.cri.cmd.test="podman --cgroup-manager cgroupfs run --entrypoint=/usr/local/bin/test.sh crucible.lab:4000/oci/build:latest" \
-nulllabs.cri.cmd.debug="" \
-nulllabs.cri.cmd.help="" \
-nulllabs.cri.params=""
-ENV MASTER="crucible.lab"
-
+ARG REPO="https://server.lab/git"
+ARG NAME="ceph"
+ARG URI="crucible.lab:4000/oci/ceph"
+ARG NAMESPACE="nulllabs"
+LABEL $NAMESPACE.build-date="$BDATE" \
+  $NAMESPACE.name="$NAME" \
+  $NAMESPACE.maintainer="kbaegis@gmail.com" \
+  $NAMESPACE.description="NullLabs ceph container." \
+  $NAMESPACE.usage="https://$REPO/NullLabs/oci/src/master/$NAME/README.md" \
+  $NAMESPACE.url="https://$REPO/NullLabs/oci/src/master/$NAME/README.md" \
+  $NAMESPACE.vcs-url="https://services.home/git/NullLabs/oci/src/master/$NAME/" \
+  $NAMESPACE.vcs-ref="$GHEAD" \
+  $NAMESPACE.vendor="NullLabs" \
+  $NAMESPACE.version="beta-0.0.2" \
+  $NAMESPACE.schema-version="1.0" \
+  $NAMESPACE.docker.cmd="docker run -d --network host --privileged -v /var/lib/ceph/:/var/lib/ceph/ -v /dev/:/dev/ -v /sys/:/sys/ --name $NAMESPACE-$NAME -l $NAMESPACE.image=$URI --restart always $URI:latest" \
+  $NAMESPACE.docker.cmd.devel="docker run -it --network host --privileged -v /var/lib/ceph/:/var/lib/ceph/ -v /dev/:/dev/ -v /sys/:/sys/ --name $NAMESPACE-$NAME-tmp -l $NAMESPACE.image=$URI --rm --entrypoint=/bin/bash $URI:latest" \
+  $NAMESPACE.docker.cmd.test="docker run -it --network host --privileged -v /var/lib/ceph/:/var/lib/ceph/ -v /dev/:/dev/ -v /sys/:/sys/ --name $NAMESPACE-$NAME-tmp -l $NAMESPACE.image=$URI --rm --entrypoint=/usr/local/bin/test.sh $URI:latest" \
+  $NAMESPACE.docker.cmd.debug="docker exec -it $NAMESPACE-$NAME bash" \
+  $NAMESPACE.docker.cmd.help="docker exec -it $NAMESPACE-$NAME /usr/local/bin/entrypoint.sh --help" \
+  $NAMESPACE.docker.params="" \
+  $NAMESPACE.cri.cmd="" \
+  $NAMESPACE.cri.cmd.devel="podman --cgroup-manager cgroupfs run --entrypoint=/bin/bash $URI:latest" \
+  $NAMESPACE.cri.cmd.test="podman --cgroup-manager cgroupfs run --entrypoint=/usr/local/bin/test.sh $URI:latest" \
+  $NAMESPACE.cri.cmd.debug="" \
+  $NAMESPACE.cri.cmd.help="" \
+  $NAMESPACE.cri.params=""
+ENV GENESIS="$GENESIS:$BDATE ($GHEAD)"
 RUN echo '=sys-cluster/ceph-12.2.5 ~amd64' >/etc/portage/package.accept_keywords \
  && printf 'dev-lang/python sqlite\ndev-libs/boost python context\nsys-cluster/ceph cephfs fuse mgr radosgw nss -ssl\napp-admin/sudo -sendmail\n' >/etc/portage/package.use/ceph \
  && FEATURES='-usersandbox -sandbox' emerge -bg sys-cluster/ceph dev-util/cmake app-admin/sudo \
@@ -37,9 +41,7 @@ RUN echo '=sys-cluster/ceph-12.2.5 ~amd64' >/etc/portage/package.accept_keywords
  && mkdir -p /var/lib/ceph/osd \
  && mkdir -p /run/lvm/ \
  && mkdir -p /var/lib/ceph/mgr/
-
 RUN $HOME/.build/rsync.sh
-
 ADD etc/* /etc/ceph/
 ADD bootstrap-osd/* /var/lib/ceph/bootstrap-osd/
 ADD bin/* /usr/local/bin/
@@ -56,8 +58,6 @@ ADD bin/* /usr/local/bin/
 #gperf gmake boost boost-python valgrind libedit libtool py-virtualenv leveldb openldap nss cryptopp snappy e2fsprogs-libuuid getopt socat expat2 gsed libxml2 xmlstartlet jq py-sphinx fuse junit py-flask py-nose py-argparse py-prettytable fcgi flock fusefs-libs
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
-#ENTRYPOINT ["/bin/bash"]
-
 #CMD ["/usr/local/bin/entrypoint.sh"]
 
 HEALTHCHECK --interval=30s --timeout=1s CMD /usr/local/bin/healthcheck.sh

@@ -1,27 +1,42 @@
 FROM crucible.lab:4000/oci/libressl:latest
+ARG GENESIS="crucible.lab:4000/oci/libressl"
 ARG BDATE="$(date --rfc-3339=date)"
 ARG GHEAD="$(git rev-parse HEAD)"
-LABEL nulllabs.build-date="$BDATE" \
-nulllabs.name="postgresql" \
-nulllabs.maintainer="kbaegis@gmail.com" \
-nulllabs.description="Build container for catalyst/buildah/jenkins CI" \
-nulllabs.usage="https://services.home/git/NullLabs/oci/src/master/README.md" \
-nulllabs.url="https://services.home/git/NullLabs/oci/src/master/README.md" \
-nulllabs.vcs-url="https://services.home/git/NullLabs/oci/src/master/" \
-nulllabs.vcs-ref="$GHEAD" \
-nulllabs.vendor="NullLabs" \
-nulllabs.version="beta-0.0.1" \
-nulllabs.schema-version="1.0" \
-nulllabs.docker.cmd="docker run -d --name nulllabs-postgresql -l nulllabs.image=crucible.lab:4000/oci/postgresql crucible.lab:4000/oci/postgresql:latest" \
-nulllabs.docker.cmd.devel="docker run -it --name nulllabs-postgresql-tmp -l nulllabs.image=crucible.lab:4000/oci/postgresql --entrypoint=/bin/bash crucible.lab:4000/oci/postgresql:latest" \
-nulllabs.docker.cmd.test="docker run -it --name nulllabs-postgresql-test -l nulllabs.image=crucible.lab:4000/oci/postgresql --rm --entrypoint=/bin/bash crucible.lab:4000/oci/postgresql:latest" \
-nulllabs.docker.cmd.debug="docker exec -it nulllabs-postgresql bash" \
-nulllabs.docker.cmd.help="docker exec -it nulllabs-postgresql /usr/local/bin/entrypoint.sh --help" \
-nulllabs.docker.params="REPO=,THREADS="
+ARG REPO="https://server.lab/git"
+ARG NAME="postgresql"
+ARG URI="crucible.lab:4000/oci/postgresql"
+ARG NAMESPACE="nulllabs"
+LABEL $NAMESPACE.build-date="$BDATE" \
+  $NAMESPACE.name="$NAME" \
+  $NAMESPACE.maintainer="kbaegis@gmail.com" \
+  $NAMESPACE.description="SQL Database for NullLabs." \
+  $NAMESPACE.usage="https://$REPO/NullLabs/oci/src/master/$NAME/README.md" \
+  $NAMESPACE.url="https://$REPO/NullLabs/oci/src/master/$NAME/README.md" \
+  $NAMESPACE.vcs-url="https://services.home/git/NullLabs/oci/src/master/$NAME/" \
+  $NAMESPACE.vcs-ref="$GHEAD" \
+  $NAMESPACE.vendor="NullLabs" \
+  $NAMESPACE.version="beta-0.0.2" \
+  $NAMESPACE.schema-version="1.0" \
+  $NAMESPACE.docker.cmd="docker run -d -p 5432:5432 --name $NAMESPACE-$NAME -l $NAMESPACE.image=$URI $URI:latest" \
+  $NAMESPACE.docker.cmd.devel="docker run -it -p 5432:5432 --name $NAMESPACE-$NAME-dev --rm -l $NAMESPACE.image=$URI --entrypoint=/bin/bash $URI:latest" \
+  $NAMESPACE.docker.cmd.test="docker run -it -p 5432:5432 --name $NAMESPACE-$NAME-test --rm -l $NAMESPACE.image=$URI --entrypoint=/usr/local/bin/test.sh $URI:latest" \
+  $NAMESPACE.docker.cmd.debug="docker exec -it $NAMESPACE-$NAME bash" \
+  $NAMESPACE.docker.cmd.help="docker exec -it $NAMESPACE-$NAME /usr/local/bin/entrypoint.sh --help" \
+  $NAMESPACE.docker.params="" \
+  $NAMESPACE.cri.cmd="" \
+  $NAMESPACE.cri.cmd.devel="podman --cgroup-manager cgroupfs run --entrypoint=/bin/bash $URI:latest" \
+  $NAMESPACE.cri.cmd.test="podman --cgroup-manager cgroupfs run --entrypoint=/usr/local/bin/test.sh $URI:latest" \
+  $NAMESPACE.cri.cmd.debug="" \
+  $NAMESPACE.cri.cmd.help="" \
+  $NAMESPACE.cri.params=""
 
-ENV PGDATA="/etc/postgresql/" \
+#PGDATA="/etc/postgresql/" \
+ENV PGDATA="/var/lib/postgresql/data/" \
   DATADIR="/var/lib/postgresql/data/" \
-  ENCODING="UTF8"
+  ENCODING="UTF8" \
+  TZ="America/Denver" \
+  PGPORT="5432" \
+  GENESIS="$GENESIS:$BDATE ($GHEAD)"
 
 RUN printf 'dev-db/postgresql -kerberos ldap libressl nls pam perl python readline server ssl threads uuid xml zlib\napp-crypt/mit-krb5 keyutils libressl nls openldap pkinit threads' >>/etc/portage/package.use/postgresql \
  && emerge -bg dev-db/postgresql \
@@ -32,8 +47,7 @@ RUN printf 'dev-db/postgresql -kerberos ldap libressl nls pam perl python readli
  && emerge --config dev-db/postgresql \
  && emerge --depclean --with-bdeps=n
 
-RUN emerge --config dev-db/postgresql \
- && mkdir /run/postgresql/ \
+RUN mkdir /run/postgresql/ \
  && mkdir /etc/ssl/postgresql/ \
  && mkdir /var/tmp/sql/ \
  && echo '' >/var/log/postgresql.log
@@ -46,8 +60,10 @@ ADD --chown=postgres:postgres .x509/* /etc/ssl/postgresql/
 
 RUN chown postgres:postgres /run/postgresql/ \
  && chown postgres:postgres /var/log/postgresql.log \
+ && chown postgres:root /etc/ssl/postgresql/* \
  && chmod 640 /etc/ssl/postgresql/* \
- && chmod 600 /etc/ssl/postgresql/*.key.pem
+ && chmod 600 /etc/ssl/postgresql/*.key.pem \
+ && ln -s /etc/postgresql-10/ /etc/postgresql
 
 ADD sql/* /var/tmp/sql/
 RUN su postgres -c "/usr/lib64/postgresql-10/bin/pg_ctl -D $DATADIR -l /var/log/postgresql.log start" \

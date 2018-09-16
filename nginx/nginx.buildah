@@ -1,23 +1,35 @@
 FROM crucible.lab:4000/oci/libressl:latest
+ARG GENESIS="crucible.lab:4000/oci/libressl"
 ARG BDATE="$(date --rfc-3339=date)"
 ARG GHEAD="$(git rev-parse HEAD)"
-LABEL nulllabs.build-date="$BDATE" \
-nulllabs.name="nginx" \
-nulllabs.maintainer="kbaegis@gmail.com" \
-nulllabs.description="NullLabs nginx container" \
-nulllabs.usage="https://services.home/git/NullLabs/oci/src/master/nginx/README.md" \
-nulllabs.url="https://services.home/git/NullLabs/oci/src/master/nginx/README.md" \
-nulllabs.vcs-url="https://services.home/git/NullLabs/oci/src/master/nginx/" \
-nulllabs.vcs-ref="$GHEAD" \
-nulllabs.vendor="NullLabs" \
-nulllabs.version="beta-0.0.1" \
-nulllabs.schema-version="1.0" \
-nulllabs.docker.cmd="docker run -d -v /var/www/:/var/www/ -v /var/nfs/:/var/nfs/ --name nulllabs-nginx -p 443:443 --restart always -l nulllabs=crucible.lab:4000/oci/nginx crucible.lab:4000/oci/nginx:latest" \
-nulllabs.docker.cmd.devel="docker run -d -v /var/www/:/var/www/ -v /var/nfs/:/var/nfs/ --name nulllabs-nginx-dev -p 443:443 --rm --entrypoint=/bin/bash -l nulllabs=crucible.lab:4000/oci/nginx crucible.lab:4000/oci/nginx:latest" \
-nulllabs.docker.cmd.test="docker run -d -v /var/www/:/var/www/ -v /var/nfs/:/var/nfs/ --name nulllabs-nginx-dev -p 443:443 --rm --entrypoint=/usr/local/bin/test.sh -l nulllabs=crucible.lab:4000/oci/nginx crucible.lab:4000/oci/nginx:latest" \
-nulllabs.docker.cmd.debug="docker exec -it nulllabs-nginx bash" \
-nulllabs.docker.cmd.help="docker exec -it nulllabs-nginx /usr/local/bin/entrypoint.sh --help" \
-nulllabs.docker.params=""
+ARG REPO="https://server.lab/git"
+ARG NAME="nginx"
+ARG URI="crucible.lab:4000/oci/nginx"
+ARG NAMESPACE="nulllabs"
+LABEL $NAMESPACE.build-date="$BDATE" \
+  $NAMESPACE.name="$NAME" \
+  $NAMESPACE.maintainer="kbaegis@gmail.com" \
+  $NAMESPACE.description="NullLabs Webserver." \
+  $NAMESPACE.usage="https://$REPO/NullLabs/oci/src/master/$NAME/README.md" \
+  $NAMESPACE.url="https://$REPO/NullLabs/oci/src/master/$NAME/README.md" \
+  $NAMESPACE.vcs-url="https://services.home/git/NullLabs/oci/src/master/$NAME/" \
+  $NAMESPACE.vcs-ref="$GHEAD" \
+  $NAMESPACE.vendor="NullLabs" \
+  $NAMESPACE.version="beta-0.0.2" \
+  $NAMESPACE.schema-version="1.0" \
+  $NAMESPACE.docker.cmd="docker run -d -v /var/www/:/var/www/ -v /var/nfs/:/var/nfs/ -p 443:443 --restart always --name $NAMESPACE-$NAME -l $NAMESPACE.image=$URI $URI:latest" \
+  $NAMESPACE.docker.cmd.devel="docker run -it -v /var/www/:/var/www/ -v /var/nfs/:/var/nfs/ -p 443:443 --restart always --name $NAMESPACE-$NAME --rm -l $NAMESPACE.image=$URI $URI:latest" \
+  $NAMESPACE.docker.cmd.test="docker run -it -v /var/www/:/var/www/ -v /var/nfs/:/var/nfs/ -p 443:443 --restart always --name $NAMESPACE-$NAME --rm --entrypoint=/usr/local/bin/test.sh -l $NAMESPACE.image=$URI $URI:latest" \
+  $NAMESPACE.docker.cmd.debug="docker exec -it $NAMESPACE-$NAME bash" \
+  $NAMESPACE.docker.cmd.help="docker exec -it $NAMESPACE-$NAME /usr/local/bin/entrypoint.sh --help" \
+  $NAMESPACE.docker.params="" \
+  $NAMESPACE.cri.cmd="" \
+  $NAMESPACE.cri.cmd.devel="podman --cgroup-manager cgroupfs run --entrypoint=/bin/bash $URI:latest" \
+  $NAMESPACE.cri.cmd.test="podman --cgroup-manager cgroupfs run --entrypoint=/usr/local/bin/test.sh $URI:latest" \
+  $NAMESPACE.cri.cmd.debug="" \
+  $NAMESPACE.cri.cmd.help="" \
+  $NAMESPACE.cri.params=""
+ENV GENESIS="$GENESIS:$BDATE ($GHEAD)"
 
 RUN printf "www-servers/nginx http http-cache http2 ipv6 libressl -luajit nginx_modules_http_access nginx_modules_http_addition nginx_modules_http_auth_basic nginx_modules_http_auth_ldap nginx_modules_http_auth_request nginx_modules_http_autoindex nginx_modules_http_browser nginx_modules_http_cache_purge nginx_modules_http_charset nginx_modules_http_dav nginx_modules_http_dav_ext nginx_modules_http_echo nginx_modules_http_empty_gif nginx_modules_http_fancyindex nginx_modules_http_fastcgi nginx_modules_http_flv nginx_modules_http_geo nginx_modules_http_geoip nginx_modules_http_gunzip nginx_modules_http_gzip nginx_modules_http_gzip_static nginx_modules_http_headers_more nginx_modules_http_image_filter nginx_modules_http_limit_conn nginx_modules_http_limit_req nginx_modules_http_lua nginx_modules_http_map nginx_modules_http_mp4 nginx_modules_http_naxsi nginx_modules_http_perl nginx_modules_http_proxy nginx_modules_http_push_stream nginx_modules_http_realip nginx_modules_http_referer nginx_modules_http_rewrite nginx_modules_http_scgi nginx_modules_http_secure_link -nginx_modules_http_security nginx_modules_http_slice nginx_modules_http_slowfs_cache nginx_modules_http_split_clients nginx_modules_http_ssi nginx_modules_http_sticky nginx_modules_http_sub nginx_modules_http_upload_progress nginx_modules_http_upstream_check nginx_modules_http_upstream_hash nginx_modules_http_upstream_ip_hash nginx_modules_http_upstream_keepalive nginx_modules_http_upstream_least_conn nginx_modules_http_upstream_zone nginx_modules_http_userid nginx_modules_http_uwsgi nginx_modules_http_xslt nginx_modules_mail_imap nginx_modules_mail_pop3 nginx_modules_mail_smtp nginx_modules_stream_access nginx_modules_stream_geo nginx_modules_stream_geoip nginx_modules_stream_limit_conn nginx_modules_stream_map nginx_modules_stream_realip nginx_modules_stream_return nginx_modules_stream_split_clients nginx_modules_stream_ssl_preread nginx_modules_stream_upstream_hash nginx_modules_stream_upstream_least_conn nginx_modules_stream_upstream_zone pcre pcre-jit rtmp ssl threads vim-syntax\nmedia-libs/gd png jpeg tiff\ndev-libs/libpcre jit\ndev-libs/libxslt crypt python\ndev-libs/libxml2 python\n" >>/etc/portage/package.use/nginx \
  && printf "dev-lang/php -apache2 bcmath -berkdb bzip2 calendar cgi cli crypt ctype curl exif fileinfo filter fpm ftp gd gmp hash iconv imap inifile intl iodbc ipv6 json ldap -ldap-sasl mhash nls opcache pcntl pdo phar posix postgres readline -recode session simplexml snmp soap socketsssl sqlite sysvipc threads tidy tokenizer truetype unicode vpx wddx xml xmlreader xmlrpc xmlwriter xpm xslt zip zlib webp sockets\napp-eselect/eselect-php -apache fpm\ndev-db/postgresql -server\ndev-php/pecl-redis igbinary -php_targets_php5-6 -php_targets_php7-0 php_targets_php7-1 session\ndev-php/igbinary -php_targets_php5-6 -php_targets_php7-0 php_targets_php7-1\ndev-php/pecl-imagick -php_targets_php5-6 -php_targets_php7-0 php_targets_php7-1\nmedia-gfx/imagemagick -openmp bzip2 cxx zlib djvu hdri jbig jpeg jpeg2k lqr lzma pango png raw svg tiff webp wmf xml\n" >>/etc/portage/package.use/php \

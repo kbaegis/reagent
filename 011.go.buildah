@@ -1,26 +1,37 @@
 FROM crucible.lab:4000/oci/libressl:latest
+ARG GENESIS="crucible.lab:4000/oci/libressl"
 ARG BDATE="$(date --rfc-3339=date)"
 ARG GHEAD="$(git rev-parse HEAD)"
-ARG THREADS=33
-LABEL nulllabs.build-date="$BDATE" \
-nulllabs.name="go" \
-nulllabs.maintainer="kbaegis@gmail.com" \
-nulllabs.description="Build container for catalyst/buildah/jenkins CI" \
-nulllabs.usage="https://services.home/git/NullLabs/oci/src/master/README.md" \
-nulllabs.url="https://services.home/git/NullLabs/oci/src/master/README.md" \
-nulllabs.vcs-url="https://services.home/git/NullLabs/oci/src/master/" \
-nulllabs.vcs-ref="$GHEAD" \
-nulllabs.vendor="NullLabs" \
-nulllabs.version="beta-0.0.1" \
-nulllabs.schema-version="1.0" \
-nulllabs.docker.cmd="docker run -d --name nulllabs-go -l nulllabs.image=crucible.lab:4000/oci/go crucible.lab:4000/oci/go:latest" \
-nulllabs.docker.cmd.devel="docker run -it --name nulllabs-go-tmp -l nulllabs.image=crucible.lab:4000/oci/go --entrypoint=/bin/bash crucible.lab:4000/oci/go:latest" \
-nulllabs.docker.cmd.test="docker run -it --name nulllabs-go-test -l nulllabs.image=crucible.lab:4000/oci/go --rm --entrypoint=/bin/bash crucible.lab:4000/oci/go:latest" \
-nulllabs.docker.cmd.debug="docker exec -it nulllabs-go bash" \
-nulllabs.docker.cmd.help="docker exec -it nulllabs-go /usr/local/bin/entrypoint.sh --help" \
-nulllabs.docker.params="REPO=,THREADS="
+ARG REPO="https://server.lab/git"
+ARG NAME="go"
+ARG URI="crucible.lab:4000/oci/libressl"
+ARG NAMESPACE="nulllabs"
+LABEL $NAMESPACE.build-date="$BDATE" \
+  $NAMESPACE.name="$NAME" \
+  $NAMESPACE.maintainer="kbaegis@gmail.com" \
+  $NAMESPACE.description="Base container for go." \
+  $NAMESPACE.usage="https://$REPO/NullLabs/oci/src/master/$NAME/README.md" \
+  $NAMESPACE.url="https://$REPO/NullLabs/oci/src/master/$NAME/README.md" \
+  $NAMESPACE.vcs-url="https://services.home/git/NullLabs/oci/src/master/$NAME/" \
+  $NAMESPACE.vcs-ref="$GHEAD" \
+  $NAMESPACE.vendor="NullLabs" \
+  $NAMESPACE.version="beta-0.0.2" \
+  $NAMESPACE.schema-version="1.0" \
+  $NAMESPACE.docker.cmd="docker run -it --name $NAMESPACE-$NAME --privileged -l $NAMESPACE.image=$URI $URI:latest" \
+  $NAMESPACE.docker.cmd.devel="docker run -it --name $NAMESPACE-$NAME-tmp --privileged -l $NAMESPACE.image=$URI --rm --entrypoint=/bin/bash $URI:latest" \
+  $NAMESPACE.docker.cmd.test="docker run --entrypoint=/usr/local/bin/test.sh $URI:latest" \
+  $NAMESPACE.docker.cmd.debug="docker exec -it $NAMESPACE-$NAME bash" \
+  $NAMESPACE.docker.cmd.help="docker exec -it $NAMESPACE-$NAME /usr/local/bin/entrypoint.sh --help" \
+  $NAMESPACE.docker.params="" \
+  $NAMESPACE.cri.cmd="" \
+  $NAMESPACE.cri.cmd.devel="podman --cgroup-manager cgroupfs run --entrypoint=/bin/bash $URI:latest" \
+  $NAMESPACE.cri.cmd.test="podman --cgroup-manager cgroupfs run --entrypoint=/usr/local/bin/test.sh $URI:latest" \
+  $NAMESPACE.cri.cmd.debug="" \
+  $NAMESPACE.cri.cmd.help="" \
+  $NAMESPACE.cri.params="GOPATH,GOBIN"
 ENV GOPATH="/root/.go" \
-  GOBIN="/root/.go/bin"
+  GOBIN="/root/.go/bin" \
+  GENESIS="$GENESIS:$BDATE ($GHEAD)"
 RUN mkdir $HOME/.go \
  && printf 'FEATURES="-usersandbox"\n' >> /etc/portage/env/nousersandbox.conf \
  && printf 'dev-lang/go nousersandbox.conf\n' >> /etc/portage/package.env \

@@ -1,27 +1,39 @@
 FROM crucible.lab:4000/oci/libressl:latest
+ARG GENESIS="crucible.lab:4000/oci/libressl"
 ARG BDATE="$(date --rfc-3339=date)"
 ARG GHEAD="$(git rev-parse HEAD)"
-LABEL nulllabs.build-date="$BDATE" \
-nulllabs.name="radius" \
-nulllabs.maintainer="kbaegis@gmail.com" \
-nulllabs.description="NullLabs radius container" \
-nulllabs.usage="https://services.home/git/NullLabs/oci/src/master/radius/README.md" \
-nulllabs.url="https://services.home/git/NullLabs/oci/src/master/radius/README.md" \
-nulllabs.vcs-url="https://services.home/git/NullLabs/oci/src/master/radius/" \
-nulllabs.vcs-ref="$GHEAD" \
-nulllabs.vendor="NullLabs" \
-nulllabs.version="beta-0.0.1" \
-nulllabs.schema-version="1.0" \
-nulllabs.docker.cmd="docker run -d -p 1812:1812/udp -p 1813:1813/udp --name nulllabs-radius -l nulllabs.image=crucible.lab:4000/oci/radius crucible.lab:4000/oci/radius:latest" \
-nulllabs.docker.cmd.devel="docker run -it --name nulllabs-radius-tmp -l nulllabs.image=crucible.lab:4000/oci/radius --rm --entrypoint=/bin/bash crucible.lab:4000/oci/radius:latest" \
-nulllabs.docker.cmd.test="docker run -it --name nulllabs-radius-test -l nulllabs.image=crucible.lab:4000/oci/radius --rm --entrypoint=/usr/local/bin/test.sh crucible.lab:4000/oci/radius:latest" \
-nulllabs.docker.cmd.debug="docker exec -it nulllabs-radius bash" \
-nulllabs.docker.cmd.help="docker exec -it nulllabs-radius /usr/local/bin/entrypoint.sh --help" \
-nulllabs.docker.params="REPO=,THREADS="
+ARG REPO="https://server.lab/git"
+ARG NAME="radius"
+ARG URI="crucible.lab:4000/oci/radius"
+ARG NAMESPACE="nulllabs"
+LABEL $NAMESPACE.build-date="$BDATE" \
+  $NAMESPACE.name="$NAME" \
+  $NAMESPACE.maintainer="kbaegis@gmail.com" \
+  $NAMESPACE.description="NullLabs Webserver." \
+  $NAMESPACE.usage="https://$REPO/NullLabs/oci/src/master/$NAME/README.md" \
+  $NAMESPACE.url="https://$REPO/NullLabs/oci/src/master/$NAME/README.md" \
+  $NAMESPACE.vcs-url="https://services.home/git/NullLabs/oci/src/master/$NAME/" \
+  $NAMESPACE.vcs-ref="$GHEAD" \
+  $NAMESPACE.vendor="NullLabs" \
+  $NAMESPACE.version="beta-0.0.2" \
+  $NAMESPACE.schema-version="1.0" \
+  $NAMESPACE.docker.cmd="docker run -d -p 1812:1812/udp -p 1813:1813/udp --restart always --name $NAMESPACE-$NAME -l $NAMESPACE.image=$URI $URI:latest" \
+  $NAMESPACE.docker.cmd.devel="docker run -it -p 1812:1812/udp -p 1813:1813/udp --rm --name $NAMESPACE-$NAME-dev -l $NAMESPACE.image=$URI --entrypoint=/bin/bash $URI:latest" \
+  $NAMESPACE.docker.cmd.test="docker run -it -p 1812:1812/udp -p 1813:1813/udp --rm --name $NAMESPACE-$NAME-test -l $NAMESPACE.image=$URI --entrypoint=/usr/local/bin/test.sh $URI:latest" \
+  $NAMESPACE.docker.cmd.debug="docker exec -it $NAMESPACE-$NAME bash" \
+  $NAMESPACE.docker.cmd.help="docker exec -it $NAMESPACE-$NAME /usr/local/bin/entrypoint.sh --help" \
+  $NAMESPACE.docker.params="" \
+  $NAMESPACE.cri.cmd="" \
+  $NAMESPACE.cri.cmd.devel="podman --cgroup-manager cgroupfs run --entrypoint=/bin/bash $URI:latest" \
+  $NAMESPACE.cri.cmd.test="podman --cgroup-manager cgroupfs run --entrypoint=/usr/local/bin/test.sh $URI:latest" \
+  $NAMESPACE.cri.cmd.debug="" \
+  $NAMESPACE.cri.cmd.help="" \
+  $NAMESPACE.cri.params="DATABASESRV,GITROOT,PACKAGE"
 
 ENV DATABASESRV="server.mgmt" \
     GITROOT="https://server.lab/git/NullLabs" \
-    PACKAGE="yes"
+    PACKAGE="yes" \
+    GENESIS="$GENESIS:$BDATE ($GHEAD)"
 
 RUN printf "dev-db/postgresql -server\n" >>/etc/portage/package.use/freeradius \
  && emerge -bg sys-libs/talloc dev-util/cmake dev-db/postgresql dev-libs/libpqxx \

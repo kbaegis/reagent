@@ -1,29 +1,44 @@
 FROM crucible.lab:4000/oci/portage:latest
 #FROM crucible.lab:4000/oci/libressl:latest
+ARG GENESIS="crucible.lab:4000/oci/portage"
 ARG BDATE="$(date --rfc-3339=date)"
 ARG GHEAD="$(git rev-parse HEAD)"
-LABEL nulllabs.build-date="$BDATE" \
-nulllabs.name="strongswan" \
-nulllabs.maintainer="kbaegis@gmail.com" \
-nulllabs.description="NullLabs strongswan container" \
-nulllabs.usage="https://services.home/git/NullLabs/oci/src/master/strongswan/README.md" \
-nulllabs.url="https://services.home/git/NullLabs/oci/src/master/strongswan/README.md" \
-nulllabs.vcs-url="https://services.home/git/NullLabs/oci/src/master/strongswan/" \
-nulllabs.vcs-ref="$GHEAD" \
-nulllabs.vendor="NullLabs" \
-nulllabs.version="beta-0.0.1" \
-nulllabs.schema-version="1.0" \
-nulllabs.docker.cmd="docker run -d --privileged --cap-add=NET_RAW --cap-add=NET_ADMIN --network host --name nulllabs-strongswan -l nulllabs.image=crucible.lab:4000/oci/strongswan -v /etc/strongswan.d/:/etc/strongswan.d/:ro crucible.lab:4000/oci/strongswan:latest" \
-nulllabs.docker.cmd.devel="docker run -it --name nulllabs-strongswan-tmp -l nulllabs.image=crucible.lab:4000/oci/strongswan --rm --entrypoint=/bin/bash crucible.lab:4000/oci/strongswan:latest" \
-nulllabs.docker.cmd.test="docker run -d --privileged --cap-add=NET_RAW --cap-add=NET_ADMIN --network host --name nulllabs-strongswan -l nulllabs.image=crucible.lab:4000/oci/strongswan -v /etc/strongswan.d/:/etc/strongswan.d/:ro --entrypoint=/usr/local/bin/test.sh crucible.lab:4000/oci/strongswan:latest" \
-nulllabs.docker.cmd.debug="docker exec -it nulllabs-strongswan bash" \
-nulllabs.docker.cmd.help="docker exec -it nulllabs-strongswan /usr/local/bin/entrypoint.sh --help" \
-nulllabs.docker.params="REPO=,THREADS="
+ARG REPO="https://server.lab/git"
+ARG NAME="strongswan"
+ARG URI="crucible.lab:4000/oci/strongswan"
+ARG NAMESPACE="nulllabs"
+LABEL $NAMESPACE.build-date="$BDATE" \
+  $NAMESPACE.name="$NAME" \
+  $NAMESPACE.maintainer="kbaegis@gmail.com" \
+  $NAMESPACE.description="NullLabs Strongswan VPN." \
+  $NAMESPACE.usage="https://$REPO/NullLabs/oci/src/master/$NAME/README.md" \
+  $NAMESPACE.url="https://$REPO/NullLabs/oci/src/master/$NAME/README.md" \
+  $NAMESPACE.vcs-url="https://services.home/git/NullLabs/oci/src/master/$NAME/" \
+  $NAMESPACE.vcs-ref="$GHEAD" \
+  $NAMESPACE.vendor="NullLabs" \
+  $NAMESPACE.version="beta-0.0.2" \
+  $NAMESPACE.schema-version="1.0" \
+  $NAMESPACE.docker.cmd="docker run -d --privileged --cap-add=NET_RAW --cap-add=NET_ADMIN --network host -v /etc/strongswan.d/:/etc/strongswan.d/:ro --restart always --name $NAMESPACE-$NAME -l $NAMESPACE.image=$URI $URI:latest" \
+  $NAMESPACE.docker.cmd.devel="docker run -it --privileged --cap-add=NET_RAW --cap-add=NET_ADMIN --network host -v /etc/strongswan.d/:/etc/strongswan.d/:ro --rm --name $NAMESPACE-$NAME-dev -l $NAMESPACE.image=$URI --entrypoint=/bin/bash $URI:latest" \
+  $NAMESPACE.docker.cmd.test="docker run -it --privileged --cap-add=NET_RAW --cap-add=NET_ADMIN --network host -v /etc/strongswan.d/:/etc/strongswan.d/:ro --rm --name $NAMESPACE-$NAME-test -l $NAMESPACE.image=$URI --entrypoint=/usr/local/bin/test.sh $URI:latest" \
+  $NAMESPACE.docker.cmd.debug="docker exec -it $NAMESPACE-$NAME bash" \
+  $NAMESPACE.docker.cmd.help="docker exec -it $NAMESPACE-$NAME /usr/local/bin/entrypoint.sh --help" \
+  $NAMESPACE.docker.params="" \
+  $NAMESPACE.cri.cmd="" \
+  $NAMESPACE.cri.cmd.devel="podman --cgroup-manager cgroupfs run --entrypoint=/bin/bash $URI:latest" \
+  $NAMESPACE.cri.cmd.test="podman --cgroup-manager cgroupfs run --entrypoint=/usr/local/bin/test.sh $URI:latest" \
+  $NAMESPACE.cri.cmd.debug="" \
+  $NAMESPACE.cri.cmd.help="" \
+  $NAMESPACE.cri.params="IPSEC_PATH"
+ENV IPSEC_PATH="/etc/ipsec.conf" \
+    GENESIS="$GENESIS:$BDATE ($GHEAD)"
 
 RUN export SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt \
  && printf 'net-vpn/strongswan caps constraints curl dhcp eap gmp non-root openssl pam pkcs11 strongswan_plugins_blowfish strongswan_plugins_ha strongswan_plugins_ipseckey farp' >/etc/portage/package.use/strongswan \
  && printf 'net-vpn/strongswan ~amd64\n' >>/etc/portage/package.accept_keywords \
- && emerge -bg net-vpn/strongswan
+ && emerge -bg net-vpn/strongswan \
+ && $HOME/.build/rsync.sh \
+ && mkdir -p /etc/ssl/strongswan/
 
 #RUN git clone https://services.lab:2080/NullLabs/strongswan.git /opt/strongswan \
 # && cd /opt/strongswan/ \
@@ -34,13 +49,13 @@ RUN export SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt \
 ADD .x509/CA.cert.pem /etc/ipsec.d/cacerts/
 ADD .x509/strongswan.cert.pem /etc/ipsec.d/certs/
 ADD .x509/strongswan.key.pem /etc/ipsec.d/private/
+ADD --chown=ipsec:ipsec .x509/* /etc/ssl/strongswan/
 ADD etc/* /etc/
 ADD strongswan.d/* /etc/strongswan.d/
 ADD charon/* /etc/strongswan.d/charon/
 ADD bin/* /usr/local/bin/
-RUN chown -R ipsec:ipsec /etc/ipsec.d/
-
-RUN $HOME/.build/rsync.sh
+RUN chown -R ipsec:ipsec /etc/ipsec.d/ \
+ && chown -R ipsec:ipsec /etc/ssl/strongswan/
 
 EXPOSE 500/udp 4500/udp
 

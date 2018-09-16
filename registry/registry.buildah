@@ -1,23 +1,35 @@
 FROM crucible.lab:4000/oci/go:latest
+ARG GENESIS="crucible.lab:4000/oci/go"
 ARG BDATE="$(date --rfc-3339=date)"
 ARG GHEAD="$(git rev-parse HEAD)"
-LABEL nulllabs.build-date="$BDATE" \
-nulllabs.name="registry" \
-nulllabs.maintainer="kbaegis@gmail.com" \
-nulllabs.description="NullLabs registry container" \
-nulllabs.usage="https://services.home/git/NullLabs/oci/src/master/registry/README.md" \
-nulllabs.url="https://services.home/git/NullLabs/oci/src/master/registry/README.md" \
-nulllabs.vcs-url="https://services.home/git/NullLabs/oci/src/master/registry/" \
-nulllabs.vcs-ref="$GHEAD" \
-nulllabs.vendor="NullLabs" \
-nulllabs.version="beta-0.0.1" \
-nulllabs.schema-version="1.0" \
-nulllabs.docker.cmd="docker run -d 4000:4000/tcp --name nulllabs-registry -v /opt/docker-registry:/opt/ -l nulllabs.image=crucible.lab:4000/oci/registry crucible.lab:4000/oci/registry:latest" \
-nulllabs.docker.cmd.devel="docker run -it --name nulllabs-registry-tmp -l nulllabs.image=crucible.lab:4000/oci/registry --rm --entrypoint=/bin/bash crucible.lab:4000/oci/registry:latest" \
-nulllabs.docker.cmd.test="docker run -it --name nulllabs-registry-test -l nulllabs.image=crucible.lab:4000/oci/registry --rm --entrypoint=/usr/local/bin/test.sh crucible.lab:4000/oci/registry:latest" \
-nulllabs.docker.cmd.debug="docker exec -it nulllabs-registry bash" \
-nulllabs.docker.cmd.help="docker exec -it nulllabs-registry /usr/local/bin/entrypoint.sh --help" \
-nulllabs.docker.params="REPO=,THREADS="
+ARG REPO="https://server.lab/git"
+ARG NAME="registry"
+ARG URI="crucible.lab:4000/oci/registry"
+ARG NAMESPACE="nulllabs"
+LABEL $NAMESPACE.build-date="$BDATE" \
+  $NAMESPACE.name="$NAME" \
+  $NAMESPACE.maintainer="kbaegis@gmail.com" \
+  $NAMESPACE.description="NullLabs Registry." \
+  $NAMESPACE.usage="https://$REPO/NullLabs/oci/src/master/$NAME/README.md" \
+  $NAMESPACE.url="https://$REPO/NullLabs/oci/src/master/$NAME/README.md" \
+  $NAMESPACE.vcs-url="https://services.home/git/NullLabs/oci/src/master/$NAME/" \
+  $NAMESPACE.vcs-ref="$GHEAD" \
+  $NAMESPACE.vendor="NullLabs" \
+  $NAMESPACE.version="beta-0.0.2" \
+  $NAMESPACE.schema-version="1.0" \
+  $NAMESPACE.docker.cmd="docker run -d -v /opt/docker-registry:/opt/ -p 4000:4000/tcp --restart always --name $NAMESPACE-$NAME -l $NAMESPACE.image=$URI $URI:latest" \
+  $NAMESPACE.docker.cmd.devel="docker run -it -v /opt/docker-registry:/opt/ -p 4000:4000/tcp --rm --name $NAMESPACE-$NAME-dev -l $NAMESPACE.image=$URI --namespace=/bin/bash $URI:latest" \
+  $NAMESPACE.docker.cmd.test="docker run -it -v /opt/docker-registry:/opt/ -p 4000:4000/tcp --rm --name $NAMESPACE-$NAME-test -l $NAMESPACE.image=$URI --namespace=/usr/local/bin/test.sh $URI:latest" \
+  $NAMESPACE.docker.cmd.debug="docker exec -it $NAMESPACE-$NAME bash" \
+  $NAMESPACE.docker.cmd.help="docker exec -it $NAMESPACE-$NAME /usr/local/bin/entrypoint.sh --help" \
+  $NAMESPACE.docker.params="" \
+  $NAMESPACE.cri.cmd="" \
+  $NAMESPACE.cri.cmd.devel="podman --cgroup-manager cgroupfs run --entrypoint=/bin/bash $URI:latest" \
+  $NAMESPACE.cri.cmd.test="podman --cgroup-manager cgroupfs run --entrypoint=/usr/local/bin/test.sh $URI:latest" \
+  $NAMESPACE.cri.cmd.debug="" \
+  $NAMESPACE.cri.cmd.help="" \
+  $NAMESPACE.cri.params=""
+ENV GENESIS="$GENESIS:$BDATE ($GHEAD)"
 
 RUN mkdir -p /etc/docker/registry/ \
  && mkdir -p /etc/ssl/docker-registry/

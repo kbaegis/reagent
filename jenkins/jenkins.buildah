@@ -1,28 +1,38 @@
 FROM crucible.lab:4000/oci/java:latest
+ARG GENESIS="crucible.lab:4000/oci/java"
 ARG BDATE="$(date --rfc-3339=date)"
 ARG GHEAD="$(git rev-parse HEAD)"
-LABEL nulllabs.build-date="$BDATE" \
-nulllabs.name="jenkins" \
-nulllabs.maintainer="kbaegis@gmail.com" \
-nulllabs.description="NullLabs jenkins container" \
-nulllabs.usage="https://services.home/git/NullLabs/oci/src/master/jenkins/README.md" \
-nulllabs.url="https://services.home/git/NullLabs/oci/src/master/jenkins/README.md" \
-nulllabs.vcs-url="https://services.home/git/NullLabs/oci/src/master/jekins/" \
-nulllabs.vcs-ref="$GHEAD" \
-nulllabs.vendor="NullLabs" \
-nulllabs.version="beta-0.0.1" \
-nulllabs.schema-version="1.0" \
-nulllabs.docker.cmd="" \
-nulllabs.docker.cmd.devel="" \
-nulllabs.docker.cmd.test="" \
-nulllabs.docker.cmd.debug="docker exec -it nulllabs-pdns bash" \
-nulllabs.docker.cmd.help="docker exec -it nulllabs-pdns /usr/local/bin/entrypoint.sh --help" \
-nulllabs.docker.params="REPO=,THREADS="
-
+ARG REPO="https://server.lab/git"
+ARG NAME="jenkins"
+ARG URI="crucible.lab:4000/oci/jenkins"
+ARG NAMESPACE="nulllabs"
+LABEL $NAMESPACE.build-date="$BDATE" \
+  $NAMESPACE.name="$NAME" \
+  $NAMESPACE.maintainer="kbaegis@gmail.com" \
+  $NAMESPACE.description="NullLabs jenkins container." \
+  $NAMESPACE.usage="https://$REPO/NullLabs/oci/src/master/$NAME/README.md" \
+  $NAMESPACE.url="https://$REPO/NullLabs/oci/src/master/$NAME/README.md" \
+  $NAMESPACE.vcs-url="https://services.home/git/NullLabs/oci/src/master/$NAME/" \
+  $NAMESPACE.vcs-ref="$GHEAD" \
+  $NAMESPACE.vendor="NullLabs" \
+  $NAMESPACE.version="beta-0.0.2" \
+  $NAMESPACE.schema-version="1.0" \
+  $NAMESPACE.docker.cmd="docker run -it --name $NAMESPACE-$NAME --privileged -l $NAMESPACE.image=$URI $URI:latest" \
+  $NAMESPACE.docker.cmd.devel="docker run -it --name $NAMESPACE-$NAME-tmp --privileged -l $NAMESPACE.image=$URI --rm --entrypoint=/bin/bash $URI:latest" \
+  $NAMESPACE.docker.cmd.test="docker run --entrypoint=/usr/local/bin/test.sh $URI:latest" \
+  $NAMESPACE.docker.cmd.debug="docker exec -it $NAMESPACE-$NAME bash" \
+  $NAMESPACE.docker.cmd.help="docker exec -it $NAMESPACE-$NAME /usr/local/bin/entrypoint.sh --help" \
+  $NAMESPACE.docker.params="" \
+  $NAMESPACE.cri.cmd="" \
+  $NAMESPACE.cri.cmd.devel="podman --cgroup-manager cgroupfs run --entrypoint=/bin/bash $URI:latest" \
+  $NAMESPACE.cri.cmd.test="podman --cgroup-manager cgroupfs run --entrypoint=/usr/local/bin/test.sh $URI:latest" \
+  $NAMESPACE.cri.cmd.debug="" \
+  $NAMESPACE.cri.cmd.help="" \
+  $NAMESPACE.cri.params=""
+ENV GENESIS="$GENESIS:$BDATE ($GHEAD)"
 RUN printf 'dev-util/jenkins-bin ~amd64' >>/etc/portage/package.accept_keywords \
- && emerge -bg dev-util/jenkins-bin
-
-RUN $HOME/.build/rsync.sh
+ && emerge -bg dev-util/jenkins-bin \
+ && $HOME/.build/rsync.sh
 
 ##Runtime
 #su jenkins
@@ -33,7 +43,6 @@ ADD bin/* /usr/local/bin/
 EXPOSE 8080/tcp
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
-
 #CMD ["-D","/var/lib/postgresql/10/data","-l","/var/log/pg.log","start"]
 
 #HEALTHCHECK --interval=30s --timeout=5s CMD /usr/local/bin/healthcheck.sh

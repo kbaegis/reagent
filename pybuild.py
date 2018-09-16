@@ -12,8 +12,8 @@ import re
 import shlex
 import json
 import signal
-import timeit
 import readline
+import cProfile
 
 #Please adjust to fit your environment
 SCRIPTPATH = os.path.dirname(os.path.realpath(__file__))
@@ -41,16 +41,18 @@ TESTLABEL = 'nulllabs.cri.cmd.test' #What label your dockerfiles use to store th
 # -1: pending/intermediate
 # -2: disabled
 
-class bcolors:
+class tcolors(object):
     """Class containing terminal codes for colorized output."""
-    ISUCCESS = '\033[94m' #intermediate success; blue
-    SUCCESS = '\033[92m' #success; green
-    VOUT = '\033[0;37m' #Verbose output; White/Grey
-    PROGRESS = '\033[33m' #Function progress; Yellow
-    FAILURE = '\033[31m' #Failure; Red
-    ENDC = '\033[0m' #Color Reset
-    BOLD = '\033[1m' #Bold
-    UNDERLINE = '\033[4m' #Underline
+    def __init__(self):
+        self.ISUCCESS = '\033[94m' #intermediate success; blue
+        self.SUCCESS = '\033[92m' #success; green
+        self.VOUT = '\033[0;37m' #Verbose output; White/Grey
+        self.PROGRESS = '\033[33m' #Function progress; Yellow
+        self.FAILURE = '\033[31m' #Failure; Red
+        self.ENDC = '\033[0m' #Color Reset
+        self.BOLD = '\033[1m' #Bold
+        self.UNDERLINE = '\033[4m' #Underline
+        self.codeMapping = {0: self.SUCCESS, 1: self.FAILURE, -1: self.ISUCCESS, -2: self.VOUT, 2: self.PROGRESS}
 
 class subprocessReturn(object):
     """Class containing both the Popen state tracking (call) and a list of output lines (output) from a subprocess run."""
@@ -58,16 +60,40 @@ class subprocessReturn(object):
         self.call = call
         self.output = output
 
+class pendingOperation(object):
+    """Class storing a procedure to be run inside signal_handler if invoked."""
+    def setOperation(self, name, profile, methodname):
+        self.name = name
+        self.profile = profile
+        self.method = getattr(imageList, methodname)
+    
+    def enableOperation(self, name, methodname):
+        self.name = name
+        self.method = getattr(imageList, methodname)
+        self.profile = cProfile.Profile()
+        self.profile.enable()
+        return self.profile
+    
+    def clearOperation(self):
+        del self.name
+        del self.profile
+        del self.method
+
+    def run_method(self):
+        elapsed = profileTiming(".*", self.profile, persist = False)
+        self.method(images, self.name, -1, time = elapsed)
+
 class imageList(object):
     """Class tracking images in various container image states."""
     def __init__(self, args):
-        self.images = {}
+        self.images = {} #used for state tracking
+        self.time = {} #used for profiled time consumed
         self.base_uri = ''.join([REGISTRY, NAMESPACE])
         self.date = DATE
         self.tags = [self.date, 'latest']
-        self.image_types = ['bootstrapping', 'base', 'leaf', 'default'] #unused
+        self.image_types = ['bootstrapping', 'base', 'leaf', 'default'] #unused, classifies image for initial states and pending operations
         self.base_properties = ['uri', 'tag', 'type'] #unused
-        self.add_properties = {'build status': 'core', 'test status': 'test', 'vuln test status': 'vuln_test', 'push status': 'core'} #Operations and the category they fall under, translated to an initial state via enablement.
+        self.add_properties = {'build': 'core', 'test': 'test', 'vuln test': 'vuln_test', 'push': 'core'} #Operations and the category they fall under, translated to an initial state via enablement.
         self.enablement = {'default': {'core': -1, 'test': -2, 'vuln_test': -2}, 'bootstrapping': {'core': -1, 'test': -2, 'vuln_test': -2}} #Used in addImage to set the initial state of various operations (pulled in from add_properties). Updated via methods below.
         self.features = args
         if self.features.test_images == True:
@@ -83,68 +109,75 @@ class imageList(object):
         """Method to track a new image. Initial states are assigned by image_type -> enablement -> add_properties."""
         uri = self.base_uri + name
         enablement = self.enablement
-        for tag in self.tags:
-            self.images[name + ':' + tag] = {'uri': uri, 'tag': tag, 'type': image_type} #Basic properties
-            for key, value in self.add_properties.items():
-                self.images[name + ':' + tag][key] = enablement[image_type][value]
-            if self.features.disable_registry == True:
-                self.images[name + ':' + tag].update({'push status': -2})
+        self.images[name] = {'uri': uri, 'tags': self.tags, 'type': image_type} #Basic properties
+        self.time[name] = {}
+        for key, value in self.add_properties.items():
+            self.images[name][key + ' state'] = enablement[image_type][value]
+            self.time[name][key + ' time'] = 0
+        if self.features.disable_registry == True:
+            self.images[name].update({'push state': -2})
 
-    def updateBuilt(self, name, build_status):
+    def updateBuilt(self, name, build_state, time = 0):
         """Simple method to update the state of the build."""
-        for tag in self.tags:
-            self.images[name + ':' + tag].update({'build status': build_status})
+        self.images[name].update({'build state': build_state})
+        self.time[name].update({'build time': time})
     
-    def updatePushed(self, name, push_status):
-        """Simple method to update the push status of the build."""
-        for tag in self.tags:
-            self.images[name + ':' + tag].update({'push status': push_status})
+    def updatePushed(self, name, push_state, time = 0):
+        """Simple method to update the push state of the build."""
+        self.images[name].update({'push state': push_state})
+        self.time[name].update({'push time': time})
     
-    def updateTested(self, name, test_status):
-        """Simple method to update the test status of the build."""
+    def updateTested(self, name, test_state, time = 0):
+        """Simple method to update the test state of the build."""
         #
-        for tag in self.tags:
-            self.images[name + ':' + tag].update({'test status': test_status})
+        self.images[name].update({'test state': test_state})
+        self.time[name].update({'test time': time})
     
-    def updateVulnTested(self, name, vuln_test_status):
-        """Simple method to update the vulnerability test status of the build."""
-        for tag in self.tags:
-            self.images[name + ':' + tag].update({'vuln test status': vuln_test_status})
+    def updateVulnTested(self, name, vuln_test_state, time = 0):
+        """Simple method to update the vulnerability test state of the build."""
+        self.images[name].update({'vuln test state': vuln_test_state})
+        self.time[name].update({'vuln test time': time})
 
     def statusList(self):
         """Method to return a list of image states."""
-        failure = bcolors.FAILURE + bcolors.BOLD
-        success = bcolors.SUCCESS + bcolors.BOLD
-        isuccess = bcolors.ISUCCESS
-        none = bcolors.VOUT
-        end = bcolors.ENDC
+        colors = tcolors()
+        failure = colors.FAILURE + colors.BOLD
+        success = colors.SUCCESS + colors.BOLD
+        isuccess = colors.ISUCCESS
+        none = colors.VOUT
+        end = colors.ENDC
         returnlist = []
         for name, unused in self.images.items():
-            uri = ''.join([self.images[name]['uri'], ':',self.images[name]['tag']])
+            uri = self.images[name]['uri']
             string = "Image: " + uri + end
             fails = 0
             unfinished = 0
             return_keys = []
-            for key, value in self.images[name].items():
+            for key, state in self.images[name].items():
                 return_keys.append(key)
             for item in return_keys[3:]:
-                value = self.images[name][item]
-                if value >= 1:
+                state = self.images[name][item]
+                time = self.time[name][item.replace('state', 'time')]
+                if state >= 1:
                     fails = fails + 1
-                    string = string + "; " + item + ":" + failure + "Failed" + end
-                elif value == -1:
+                    string = string + "; " + item + ":" + failure + "Failed (" + str(time) + " seconds)" + end
+                elif state == -1:
                     unfinished = unfinished + 1
-                    string = string + "; " + item + ":" + isuccess + "Pending" + end
-                elif value == -2:
-                    string = string + "; " + item + ":" + success + "Disabled" + end
+                    string = string + "; " + item + ":" + isuccess + "Pending (" + str(time) + " seconds)" + end
+                elif state == -2:
+                    string = string + "; " + item + ":" + success + "Disabled (" + str(time) + " seconds)" + end
                 else:
-                    string = string + "; " + item + ":" + success + "Complete" + end
+                    string = string + "; " + item + ":" + success + "Complete (" + str(time) + " seconds)" + end
             if fails > 0:
                 string = failure + string
             if unfinished > 0:
                 string = isuccess + string
             else:
                 string = success + string
+            tags = self.images[name]['tags'][0]
+            for tag in self.images[name]['tags'][1:]:
+                tags = tags + "," + tag
+            string = string + "; Tags: " + tags
             returnlist.append(string)
         if not returnlist:
             string = none + "No images built." + end
@@ -155,10 +188,9 @@ class imageList(object):
         """Method to return a list of successfully built images."""
         returnlist = []
         for name, value in self.images.items():
-            uri = ''.join([self.images[name]['uri'], ':', self.images[name]['tag']])
-            build_status = self.images[name]['build status']
+            build_status = self.images[name]['build state']
             if build_status == 0:
-                returnlist.append(uri)
+                returnlist.append(name)
         return returnlist
 
     def listUntested(self):
@@ -168,13 +200,13 @@ class imageList(object):
         unique_uri = set()
         for key, value in self.images.items():
             uri = self.images[key]['uri']
-            tag = self.images[key]['tag']
+            tag = self.images[key]['tags'][0]
             if not uri in unique_uri:
                 name = uri.rsplit(sep='/')[-1]
                 testlist.append(name + ':' + tag)
                 unique_uri.add(uri)
         for uri in testlist:
-            build_status = self.images[uri]['build status']
+            build_status = self.images[uri]['build state']
             test_status = self.images[uri]['test status']
             if build_status == 0 and test_status == -1:
                 returnlist.append(uri)
@@ -184,7 +216,7 @@ class imageList(object):
         """Method to return a list of images with any failed states."""
         returnlist = []
         for name, value in self.images.items():
-            uri = ''.join([self.images[name]['uri'], ':', self.images[name]['tag']])
+            uri = self.images[name]['uri']
             failures = 0
             failable = []
             for key, value in self.images[name].items():
@@ -201,7 +233,7 @@ class imageList(object):
         """Method to return a list of images with a successful push state."""
         returnlist = []
         for name, value in self.images.items():
-            uri = ''.join([self.images[name]['uri'], ':', self.images[name]['tag']])
+            uri = self.images[name]['uri']
             failures = 0
             failable = []
             push_status = self.images[name]['push status']
@@ -219,19 +251,6 @@ class handler:
     """Class to track forked and child processes run by sp_run."""
     def __init__(self):
         self.processList = []
-        returnlist = []
-        for name, value in self.images.items():
-            uri = ''.join([self.images[name]['uri'], ':', self.images[name]['tag']])
-            build_status = self.images[name]['build status']
-            push_status = self.images[name]['push status']
-            if push_status == 0:
-                returnlist.append(uri)
-        return returnlist
-
-class handler:
-    """Class to track forked and child processes run by sp_run."""
-    def __init__(self):
-        self.processList = []
     
     def handle_child(self, child):
         self.processList.append(child)
@@ -242,6 +261,10 @@ class handler:
 def signal_handler(signum, frame):
     """Handles SIG*"""
     signal.signal(2, signal.SIG_IGN)
+    try:
+        pending.run_method()
+    except AttributeError:
+        print("No pending operation stored.")
     status = images.statusList()
     for line in status:
         print(line)
@@ -249,15 +272,20 @@ def signal_handler(signum, frame):
         confirm = input('Would you like to terminate now? [(y)es/(n)o]')
         if confirm == 'y' or confirm == 'yes':
             try:
-                print(bcolors.PROGRESS + bcolors.BOLD + "Performing cleanup." + bcolors.ENDC)
-                cleanup(images.features)
+                cleanup(verbose = images.features)
             except:
                 pass
             for child in children.processList:
                 child.terminate()
+            progressNotify("Reagent killed by signal.", 1)
             sys.exit(0)
         elif confirm == 'n' or confirm == 'no':
             signal.signal(2, signal_handler)
+            try:
+                pending.profile.enable()
+            except AttributeError:
+                print("Couldn't restart profiling.")
+                pass
             return 0
 
 def parse_arguments(arguments):
@@ -274,8 +302,9 @@ def parse_arguments(arguments):
     args = parser.parse_args(arguments)
     return args
 
-def sp_run(command, verbose = False):
+def sp_run(command, verbose = False, nonscrolling = True):
     """Command wraps and executes commands passed to it."""
+    colors = tcolors()
     output_list = []
     with open(LOGFILE, 'a', 1) as log:
         subprocess_call = subprocess.Popen(shlex.split(command), start_new_session=True, stdin=None, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
@@ -286,12 +315,23 @@ def sp_run(command, verbose = False):
             children.handle_child(subprocess_call)
         else:
             print("Untracked rugrat at pid: " + subprocess_call.pid)
-        with io.TextIOWrapper(subprocess_call.stdout, line_buffering = True, encoding = "ascii", errors = 'ignore') as wrapper:  
+        if nonscrolling == False:
+            lb = True
+            wt = False
+            nl = None
+        elif nonscrolling == True:
+            lb = True
+            wt = False
+            nl = ''
+        with io.TextIOWrapper(subprocess_call.stdout, encoding = "ascii", errors = 'ignore', newline = nl, line_buffering = lb, write_through = wt) as wrapper:  
             for line in wrapper:
                 try:
                     if verbose == True:
-                        colorizedline = (bcolors.VOUT + line + bcolors.ENDC)
-                        print(colorizedline, end="")
+                        colorizedline = (colors.VOUT + line + colors.ENDC)
+                        if nonscrolling == False:
+                            print(colorizedline, end="")
+                        elif nonscrolling == True:
+                            print(colorizedline, end="", flush=True)
                     log.write(line)
                     log.flush()
                     output_list.append(line)
@@ -301,68 +341,59 @@ def sp_run(command, verbose = False):
             subprocess_call.wait()
             children.abandon_child(subprocess_call)
     return subprocessReturn(subprocess_call, output_list)
-    #Currently needs a mechanism to send Popen.send_signal
 
 def portage_build(build_portage, images, verbose = False):
     """Build portage container from host snapshot"""
     if build_portage is True:
-        log = open(LOGFILE, 'a', 1)
-        print(bcolors.PROGRESS + bcolors.BOLD + "Building portage" + bcolors.ENDC)
-        log.write("Building portage\n")
         name = "portagedir"
+        pbprofile = pending.enableOperation(name, 'updateBuilt')
+        progressNotify("Building portage.", 2)
         images.addImage(name, image_type = 'bootstrapping')
-        latest_nametag = name + ":latest"
-        dated_nametag = name + ":" + DATE
-        uri_base = ''.join([REGISTRY, NAMESPACE])
-        uri = ''.join([REGISTRY, NAMESPACE, name])
-        latest_uri = ''.join([uri_base, latest_nametag])
-        dated_uri = ''.join([uri_base, dated_nametag])
-        sync_target_run = sp_run("sudo buildah from " + latest_uri, verbose)
+        prime_tag = images.images[name]['tags'][0]
+        prime_uri = images.base_uri + name + ':' + prime_tag
+        sync_target_run = sp_run("sudo buildah from " + prime_uri, verbose)
         sync_target = sync_target_run.output[-1].rstrip()
         sync_target_mount_run = sp_run("sudo buildah mount " + sync_target, verbose)
         sync_target_mount = sync_target_mount_run.output[-1].rstrip()
         emaint = sp_run("env " + ''.join(["PORTDIR=", sync_target_mount]) + " emaint -a sync", verbose)
-        commit = sp_run("sudo buildah commit --format oci --rm -q --squash " + sync_target + " " + dated_uri, verbose)
-        add_latest = sp_run(" sudo buildah tag " + dated_uri + " " + latest_uri, verbose)
+        commit = sp_run("sudo buildah commit --format oci --rm -q --squash " + sync_target + " " + prime_uri, verbose)
+        for tag in images.images[name]['tags'][1:]:
+            sp_run("sudo buildah tag " + prime_uri + " " + prime_uri.replace(prime_tag,tag), verbose)
+        elapsed = profileTiming(".*", pbprofile, persist = False)
         if sync_target_run.call.returncode == 0 and commit.call.returncode == 0:
-            images.updateBuilt(name, 0)
-            log.close()
+            images.updateBuilt(name, 0, time = elapsed)
+            pending.clearOperation()
+            progressNotify("Portage build succeeded.", 0)
             return 0
         else:
-            images.updateBuilt(name, 1)
-            log.close()
+            images.updateBuilt(name, 1, time = elapsed)
+            pending.clearOperation()
+            progressNotify("Portage build failed.", 1)
             return 1
 
 def portage_overlay(args, verbose = False):
     """Create portage overlay container to be mounted on gentoo containers"""
     if args.build_catalyst is True or args.build_initial is True or args.build_targets:
-        log = open(LOGFILE, 'a', 1)
-        print(bcolors.PROGRESS + bcolors.BOLD + "Spawning portage" + bcolors.ENDC)
-        log.write("Spawning portage\n")
+        progressNotify("Spawning portage", 2)
         portagedir_container_run = sp_run("sudo buildah from " + ''.join([REGISTRY, NAMESPACE, "portagedir:latest"]), verbose)
         portagedir_container = portagedir_container_run.output[-1].rstrip()
         portagedir_container_mount_run = sp_run("sudo buildah mount " + portagedir_container, verbose)
         portagedir_container_mount = portagedir_container_mount_run.output[-1].rstrip()
-        log.close()
+        progressNotify("Portage container creation complete", 2)
         return portagedir_container_mount
 
 def catalyst_build(build_catalyst, images, portagedir, bindpath = None, verbose = False):
     """Build all stages from specfiles located in .stages/default/"""
     if build_catalyst is True:
+        name = "catalyst-cache"
         if bindpath == None:
             bindpath = ''.join([SCRIPTPATH, '/.stages/'])
-        log = open(LOGFILE, 'a', 1)
-        print(bcolors.PROGRESS + bcolors.BOLD + "Building Catalyst" + bcolors.ENDC)
-        log.write("Building Catalyst\n")
-        name = "catalyst-cache"
+        progressNotify("Building Catalyst.", 2)
         images.addImage(name, image_type = 'bootstrapping')
-        latest_nametag = name + ":latest"
-        dated_nametag = name + ":" + DATE
-        uri_base = ''.join([REGISTRY, NAMESPACE])
-        latest_uri = ''.join([uri_base, latest_nametag])
-        dated_uri = ''.join([uri_base, dated_nametag])
+        prime_tag =  images.images[name]['tags'][0]
+        prime_uri = images.base_uri + name + ':' + prime_tag
         emaint = sp_run("emaint -a sync", verbose)
-        catalyst_cache_run = sp_run("sudo buildah from " + latest_uri, verbose)
+        catalyst_cache_run = sp_run("sudo buildah from " + prime_uri, verbose)
         catalyst_cache = catalyst_cache_run.output[-1].rstrip()
         catalyst_cache_mount_run = sp_run("sudo buildah mount " + catalyst_cache, verbose)
         catalyst_cache_mount = catalyst_cache_mount_run.output[-1].rstrip()
@@ -371,53 +402,50 @@ def catalyst_build(build_catalyst, images, portagedir, bindpath = None, verbose 
         catalyst_bind_mount = sp_run("sudo mount --bind " + catalyst_cache_mount + " /var/tmp/catalyst/packages/", verbose)
         build_bind_mount = sp_run("sudo mount --bind " + bindpath + " /var/tmp/catalyst/builds/", verbose)
         if not os.path.isfile("/var/tmp/catalyst/builds/hardened/stage3-amd64-hardened-latest.tar.bz2"):
-            print(bcolors.PROGRESS + bcolors.BOLD + "Stage3 not found. Downloading from " + STAGE3URL + bcolors.ENDC)
-            log.write("Stage3 not found. Downloading from " + STAGE3URL + "\n")
+            progressNotify("Stage3 not found. Downloading from " + STAGE3URL, 2)
             os.system("sudo mkdir -p /var/tmp/catalyst/builds/hardened/")
             curl = sp_run("sudo curl -s " + STAGE3URL + " -o /var/tmp/catalyst/builds/hardened/stage3-amd64-hardened-latest.tar.bz2", verbose)
         specfile_list = [entry for entry in os.listdir("/var/tmp/catalyst/builds/default/") if re.match(r'.*\.spec$', entry)]
         snapshot = sp_run("sudo catalyst -s latest", verbose)
         for specfile in specfile_list:
-            print(bcolors.PROGRESS + bcolors.BOLD + "Catalyst build using specfile: " + specfile + bcolors.ENDC)
-            log.write("Catalyst build using specfile: " + specfile + "\n")
+            csprofile = cProfile.Profile()
+            csprofile.enable()
+            progressNotify("Catalyst build using specfile: " + specfile + ".", 2)
             build = sp_run("sudo catalyst -f " + ''.join(["/var/tmp/catalyst/builds/default/", specfile]), verbose)
+            elapsed = profileTiming(".*", csprofile, persist = False)
+            progressNotify("Specfile " + specfile + " ended after " + elapsed + " seconds.", build.call.returncode)
         catalyst_bind_umount = sp_run("sudo umount /var/tmp/catalyst/packages/", verbose)
         build_bind_umount = sp_run("sudo umount /var/tmp/catalyst/builds/", verbose)
-        commit = sp_run("sudo buildah commit --format oci --rm -q --squash " + catalyst_cache + " " + dated_uri, verbose)
-        sp_run("sudo buildah tag " + dated_uri + " " + latest_uri, verbose)
+        commit = sp_run("sudo buildah commit --format oci --rm -q --squash " + catalyst_cache + " " + prime_uri, verbose)
+        for tag in images.images[name]['tags'][1:]:
+            sp_run("sudo buildah tag " + prime_uri + " " + prime_uri.replace(prime_tag, tag), verbose)
         if catalyst_cache_run.call.returncode == 0 and commit.call.returncode == 0:
-            print(bcolors.ISUCCESS + bcolors.BOLD + "Build of " + latest_uri + " succeeded." + bcolors.ENDC)
-            log.write("Build of " + latest_uri + " succeeded.\n")
-            log.close()
+            progressNotify("Build of " + prime_uri + " succeeded.", 0)
             images.updateBuilt(name, 0)
             return 0
         else:
-            print(bcolors.FAILURE + bcolors.BOLD + "Build of " + latest_uri + " failed." + bcolors.ENDC)
-            log.write("Build of " + latest_uri + " failed\n")
-            log.close()
+            progressNotify("Build of " + prime_uri + " failed.", 1)
             images.updateBuilt(name, 1)
             return 1
 
 def stage3_bootstrap(build_initial, images, verbose = False):
     """Unpack stage3 bootstrap image inside a blank container"""
     if build_initial is True:
-        log = open(LOGFILE, 'a', 1)
+        s3profile = cProfile.Profile()
         name = "gentoo-stage3-amd64-hardened"
+        pending.setOperation(name, s3profile, 'updateBuilt')
+        s3profile.enable()
         images.addImage(name, image_type = 'bootstrapping')
-        print(bcolors.PROGRESS + bcolors.BOLD + "Bootstrapping stage3" + bcolors.ENDC)
-        log.write("Bootstrapping stage3\n")
-        uri = ''.join([REGISTRY, NAMESPACE, name])
-        dated_uri = ''.join([uri, ":", DATE])
-        latest_uri = ''.join([uri, ":latest"])
+        progressNotify("Building base container from scratch + stage3.", 2)
+        prime_tag =  images.images[name]['tags'][0]
+        prime_uri = images.base_uri + name + ':' + prime_tag
         scratch_run = sp_run("sudo buildah from scratch", verbose)
         scratch = scratch_run.output[-1].rstrip()
         scratch_mount_run = sp_run("sudo buildah mount " + scratch, verbose)
         scratch_mount = scratch_mount_run.output[-1].rstrip()
         if not os.path.isfile(''.join([SCRIPTPATH, "/.stages/hardened/stage3-amd64-hardened-latest.tar.bz2"])):
-            print(bcolors.PROGRESS + bcolors.BOLD + "Stage3 not found. Downloading from " + STAGE3URL + bcolors.ENDC)
-            log.write("Stage3 not found. Downloading from " + STAGE3URL + "\n")
+            progressNotify("Stage3 not found. Downloading from " + STAGE3URL, 2)
             curllocation = ''.join(["sudo mkdir -p ", SCRIPTPATH, "/.stages/hardened"])
-            print(curllocation)
             os.system(curllocation)
             curl = sp_run("sudo curl -s " + STAGE3URL + " -o " + ''.join([SCRIPTPATH, "/.stages/hardened/stage3-amd64-hardened-latest.tar.bz2"]), verbose)
         copy_stage3 = sp_run("sudo buildah add " + scratch + " " + ''.join([SCRIPTPATH, "/.stages/hardened/stage3-amd64-hardened-latest.tar.bz2"]), verbose)
@@ -430,73 +458,74 @@ def stage3_bootstrap(build_initial, images, verbose = False):
         sp_run("sudo buildah config --cmd /bin/bash --label " + ''.join([REGISTRY, NAMESPACE, name]) + " " + scratch, verbose)
         sp_run("sudo buildah umount " + scratch, verbose)
         commit = sp_run("sudo buildah commit --format oci --rm -q --squash " + scratch + " " + ''.join([REGISTRY, NAMESPACE, name, ":", DATE]), verbose)
-        sp_run("sudo buildah tag " + ''.join([REGISTRY, NAMESPACE, name, ":", DATE]) + " " + latest_uri, verbose)
+        for tag in images.images[name]['tags'][1:]:
+            sp_run("sudo buildah tag " + prime_uri + " " + prime_uri.replace(prime_tag, tag), verbose)
+        elapsed = profileTiming(".*", s3profile, persist = False)
         if copy_stage3.call.returncode == 0 and commit.call.returncode == 0:
-            log.close()
-            images.updateBuilt(name, 0)
+            progressNotify("Base image complete.", 0)
+            images.updateBuilt(name, 0, time = elapsed)
+            pending.clearOperation()
             return 0
         else:
-            log.close()
-            images.updateBuilt(name, 1)
+            progressNotify("Base image complete (with errors).", 1)
+            images.updateBuilt(name, 1, time = elapsed)
+            pending.clearOperation()
             return 1
 
 def stage3_spawn(build_initial, verbose = False):
     """Spawn a stage3 container from image"""
     if build_initial is True:
-        log = open(LOGFILE, 'a', 1)
-        print(bcolors.PROGRESS + bcolors.BOLD + "Spawning stage3" + bcolors.ENDC)
-        log.write("Spawning stage3\n")
+        progressNotify("Spawning stage3.", 2)
         stage3_run = sp_run("sudo buildah from " + ''.join([REGISTRY, NAMESPACE, "gentoo-stage3-amd64-hardened:latest"]), verbose)
         stage3 = stage3_run.output[-1].rstrip()
-        log.close()
+        progressNotify("Spawning stage3 complete.", 2)
         return stage3
 
-def buildah_build(file, image_name, path, images, portagedir, verbose = False):
+def buildah_build(file, image_name, path, images, portagedir, verbose = False, profiler = None):
     """Build a buildah file"""
-    log = open(LOGFILE, 'a', 1)
+    bprofile = cProfile.Profile()
+    pending.setOperation(image_name, bprofile, 'updateBuilt')
+    bprofile.enable()
     images.addImage(image_name)
-    uri = ''.join([REGISTRY, NAMESPACE, image_name])
-    uri_latest = ''.join([uri, ":latest"])
-    uri_dated = ''.join([uri, ":", DATE])
-    log.write("Python build script called with buildah for " + file + ", " + image_name + ", " + path + "\n")
-    log.flush()
-    log.close()
-    build = sp_run("sudo buildah bud --cap-add CAP_net_raw -v " + ''.join([portagedir, ":/usr/portage/"]) + " -f " + file + " -t " + uri_dated + " -t " + uri_latest + " --build-arg " + ''.join(["BDATE=", DATE]) + " --build-arg " + ''.join(["GHEAD=", GITVERSION.decode("ascii")]) + " " + path, verbose)
+    uri = images.base_uri + image_name
+    tags = images.images[image_name]['tags']
+    tagstr = ""
+    for tag in tags:
+        tagstr = tagstr + '-t ' + uri + ':' + tag + ' '
+    command = "sudo buildah bud --cap-add CAP_net_raw -v " + ''.join([portagedir, ":/usr/portage/"]) + " -f " + file + " " + tagstr + " --build-arg " + ''.join(["BDATE=", DATE]) + " --build-arg " + ''.join(["GHEAD=", GITVERSION.decode("ascii")]) + " " + path
+    if verbose:
+        progressNotify("Build initiated for " + image_name + " with " + command, 2)
+    else:
+        progressNotify("Build initiated for " + image_name, 2)
+    build = sp_run(command, verbose)
+    elapsed = profileTiming(".*", bprofile, persist = False)
     if build.call.returncode == 0:
-        print(bcolors.ISUCCESS + bcolors.BOLD + "Build of " + image_name + " succeeded!" + bcolors.ENDC)
-        log = open(LOGFILE, 'a', 1)
-        log.write("Build of " + image_name + " succeeded!\n")
-        log.close()
-        images.updateBuilt(image_name, 0)
+        progressNotify("Build of " + image_name + " succeeded.", 0)
+        images.updateBuilt(image_name, 0, time = elapsed)
+        pending.clearOperation()
         return 0
     else:
-        print(bcolors.FAILURE + bcolors.BOLD + "Build of " + image_name + " failed." + bcolors.ENDC)
-        log = open(LOGFILE, 'a', 1)
-        log.write("Build of " + image_name + " failed.\n")
-        log.close()
-        images.updateBuilt(image_name, 1)
+        progressNotify("Build of " + image_name + " failed.", 1)
+        images.updateBuilt(image_name, 1, time = elapsed)
+        pending.clearOperation()
         return 1
 
 def initial_build(build_initial, images, portagedir, verbose = False):
     """Build all numbered images in the root directory of the repo"""
     if build_initial is True:
-        log = open(LOGFILE, 'a', 1)
-        print(bcolors.PROGRESS + bcolors.BOLD + "Initial images" + bcolors.ENDC)
-        log.write("Initial images\n")
+        progressNotify("Initial images.", 2)
         for filename in INITIAL_FILES:
             buildfile = os.path.join(SCRIPTPATH, filename)
             buildpath = os.path.dirname(os.path.realpath(buildfile))
             buildname = buildfile.split('.')[1]
             buildah_build(buildfile, buildname, buildpath, images, portagedir, verbose)
-        log.close()
+        progressNotify("Initial images complete.", 2)
         return 0
 
 def project_build(build_targets, images, portagedir, verbose = False):
     """Call buildah_build for all buildah files matching the regex passed after -b"""
     if build_targets:
-        log = open(LOGFILE, 'a', 1)
-        print(bcolors.PROGRESS + bcolors.BOLD + "Project images" + bcolors.ENDC)
-        log.write("Project images\n")
+        progressNotify("Project Images.", 2)
         build_list = []
         search_expressions = []
         if any("all" in i for i in args.build_targets) or any("*" in i for i in args.build_targets):
@@ -510,27 +539,30 @@ def project_build(build_targets, images, portagedir, verbose = False):
             buildpath = os.path.dirname(os.path.realpath(buildfile))
             buildname = os.path.basename(os.path.splitext(buildfile)[0])
             buildah_build(buildfile, buildname, buildpath, images, portagedir, verbose)
-        log.close()
         return 0
     return 0
 
 def cleanup(verbose = False):
     """Remove any remaining containers"""
-    log = open(LOGFILE, 'a', 1)
+    progressNotify("Performing cleanup.", 2)
     remove = sp_run("sudo buildah rm -a", verbose)
     if remove.call.returncode == 0:
-        log.close()
+        progressNotify("Cleanup complete.", 0)
         return 0
     else:
-        log.close()
+        progressNotify("Cleanup complete (with errors).", 1)
         return 1
 
 def test_images(test_images, images, verbose = False):
     """Test image"""
     if test_images:
+        progressNotify("Image testing.", 2)
         for image in images.listUntested():
+            tprofile = cProfile.Profile()
+            pending.setOperation(image, tprofile, 'updateTested')
+            tprofile.enable()
             image_olist = ""
-            inspect = sp_run("buildah inspect " + images.base_uri + image, False)
+            inspect = sp_run("buildah inspect " + images.base_uri + image + ':' + images.images[name]['tags'][0], False)
             for entry in inspect.output:
                 image_olist = image_olist + entry
             image_json = json.loads(image_olist)
@@ -541,45 +573,95 @@ def test_images(test_images, images, verbose = False):
             test = sp_run(test_command, verbose)
             nametag = image.rsplit(sep='/')[-1]
             name = ''.join(nametag.rsplit(sep=':')[:-1])
-            images.updateTested(name, test.call.returncode)
+            elapsed = profileTiming(".*", tprofile, persist = False)
+            images.updateTested(name, test.call.returncode, time = elapsed)
+            pending.clearOperation()
             if test.call.returncode == 0:
-                print(bcolors.SUCCESS + bcolors.BOLD + "" + bcolors.ENDC)
+                progressNotify("Image tests passed.", 0)
             if test.call.returncode == 1:
-                print(bcolors.FAILURE + bcolors.BOLD + "" + bcolors.ENDC)
+                progressNotify("Image tests failed.", 1)
+        progressNotify("Image tests complete.", 2)
         return 0
     return 0
 
 def registry_push(disable_registry, images, verbose = False):
     """Push successfully built images to registry"""
     if not disable_registry:
-        log = open(LOGFILE, 'a', 1)
-        image_list = images.listBuilt()
-        if len(image_list) > 0:
-            print(bcolors.PROGRESS + bcolors.BOLD + "Registry upload" + bcolors.ENDC)
-            log.write("Registry upload\n")
-        append = "-q "
-        if verbose == True:
-            append = ""
-        for image in image_list:
-            log.write("Attempting to push: " + image + "\n")
-            push_run = sp_run("sudo buildah push " + append + image + " " + ''.join(["docker://", image]), verbose)
-            nametag = image.rsplit(sep='/')[-1]
-            name = ''.join(nametag.rsplit(sep=':')[:-1])
-            images.updatePushed(name, push_run.call.returncode)
-            if push_run.call.returncode == 0:
-                print(bcolors.SUCCESS + bcolors.BOLD + "Successfully pushed " + image + bcolors.ENDC)
-            if push_run.call.returncode == 1:
-                print(bcolors.FAILURE + bcolors.BOLD + "Failed to push " + image + bcolors.ENDC)
-        log.close()
+        name_list = images.listBuilt()
+        if len(name_list) > 0:
+            progressNotify("Registry upload.", 2)
+            append = "-q "
+            if verbose == True:
+                append = ""
+            for name in name_list:
+                pprofile = cProfile.Profile()
+                pending.setOperation(name, pprofile, 'updatePushed')
+                pprofile.enable()
+                push_failures = 0
+                prime_tag =  images.images[name]['tags'][0]
+                prime_uri = images.base_uri + name + ':' + prime_tag
+                progressNotify("Attempting to push: " + prime_uri, -2)
+                push_run = sp_run("sudo buildah push " + append + prime_uri + " " + ''.join(["docker://", prime_uri]), verbose, nonscrolling = True)
+                if push_run.call.returncode > 0:
+                    progressNotify("Failed to push " + prime_uri, 1)
+                    push_failures = push_failures + 1
+                elif push_run.call.returncode == 0:
+                    progressNotify("Successfully pushed " + prime_uri, 0)
+                    for tag in images.images[name]['tags'][1:]:
+                        tagged_uri = prime_uri.replace(prime_tag, tag)
+                        progressNotify("Attempting to copy: " + tagged_uri, -2)
+                        copy_run = sp_run("skopeo copy docker://" + prime_uri + " docker://" + tagged_uri)
+                        if copy_run.call.returncode > 0:
+                            progressNotify("Failed to copy " + tagged_uri, 1)
+                            push_failures = push_failures + 1
+                        elif copy_run.call.returncode == 0:
+                            progressNotify("Successfully copied " + tagged_uri, 0)
+                elapsed = profileTiming(".*", pprofile, persist = False)
+                if push_failures > 0:
+                    images.updatePushed(name, 1, time = elapsed)
+                    pending.clearOperation()
+                elif push_failures == 0:
+                    images.updatePushed(name, 0, time = elapsed)
+                    pending.clearOperation()
+            progressNotify("Registry upload complete.", 2)
         return 0
     return 0
 
+def progressNotify(message, code):
+    """Function to print and log progress."""
+    colors = tcolors()
+    log = open(LOGFILE, 'a', 1)
+    coloring = colors.codeMapping[code]
+    print(coloring + colors.BOLD + message + colors.ENDC)
+    log.write(message + "\n")
+    log.close()
+
+def profileTiming(search, profiler, persist = True):
+    """Function to return time consumed by expression passed."""
+    timeSum = 0
+    profiler.create_stats() #Populate profiler.stats
+    keylist=profiler.stats.keys()
+    stats=profiler.stats
+    if persist:
+        profiler.enable() #Continue profiling
+    for key in keylist:
+        string=str(key)
+        regex=re.compile(''.join([".*", search, ".*"])) #Find any tuple-key matching search name
+        #if regex.search(string) and "sp_run" not in string and "signal_handler" not in string: #Exclude nested functions
+        if regex.search(string):
+            #print("Key:" + string + "//" + "Value:" + str(stats[key]))
+            time = stats[key][3]
+            timeSum = time + timeSum
+    timeSumStr = str(timeSum)
+    return timeSum
+
 ##Main
 if __name__ == "__main__":
-    children = handler()
+    pending = pendingOperation()
     signal.signal(2, signal_handler)
     args = parse_arguments(sys.argv[1:])
     images = imageList(args)
+    children = handler()
     portage_build = portage_build(args.build_portage, images, verbose = args.verbose)
     portagedir = portage_overlay(args, verbose = args.verbose)
     catalyst_build(args.build_catalyst, images, portagedir, verbose = args.verbose)
@@ -596,4 +678,5 @@ if __name__ == "__main__":
     with open(LOGFILE, 'a', 1) as log:
         for line in status:
            log.write(line + "\n")
-    cleanup(args.verbose)
+    cleanup(verbose = args.verbose)
+    #gprofile.disable()

@@ -1,28 +1,36 @@
 ##Converts image from openssl to libressl
-
 FROM crucible.lab:4000/oci/portage:latest
+ARG GENESIS="crucible.lab:4000/oci/portage"
 ARG BDATE="$(date --rfc-3339=date)"
 ARG GHEAD="$(git rev-parse HEAD)"
-ARG THREADS=33
-ARG REPOURL="https://server.home/git/NullLabs/oci"
-ARG CREGISTRY="crucible.lab:4000/oci"
-LABEL nulllabs.build-date="$BDATE" \
-nulllabs.name="libressl" \
-nulllabs.maintainer="kbaegis@gmail.com" \
-nulllabs.description="Build container for catalyst/buildah/jenkins CI" \
-nulllabs.usage="$REPOURL/src/master/README.md" \
-nulllabs.url="$REPOURL/src/master/README.md" \
-nulllabs.vcs-url="$REPOURL/src/master/" \
-nulllabs.vcs-ref="$GHEAD" \
-nulllabs.vendor="NullLabs" \
-nulllabs.version="beta-0.0.1" \
-nulllabs.schema-version="1.0" \
-nulllabs.docker.cmd="docker run -d --name nulllabs-libressl -l nulllabs.image=$CREGISTRY/libressl $CREGISTRY/libressl:latest" \
-nulllabs.docker.cmd.devel="docker run -it --name nulllabs-libressn-tmp -l nulllabs.image=$CREGISTRY/libressl --entrypoint=/bin/bash $CREGISTRY/libressl:latest" \
-nulllabs.docker.cmd.test="docker run -it --name nulllabs-libressl-test -l nulllabs.image=$CREGISTRY/libressl --rm --entrypoint=/bin/bash $CREGISTRY/libressl:latest" \
-nulllabs.docker.cmd.debug="docker exec -it nulllabs-libressl bash" \
-nulllabs.docker.cmd.help="docker exec -it nulllabs-libressl /usr/local/bin/entrypoint.sh --help" \
-nulllabs.docker.params="REPO=,THREADS="
+ARG REPO="https://server.lab/git"
+ARG NAME="libressl"
+ARG URI="crucible.lab:4000/oci/gentoo-stage3-amd64-hardened"
+ARG NAMESPACE="nulllabs"
+LABEL $NAMESPACE.build-date="$BDATE" \
+  $NAMESPACE.name="$NAME" \
+  $NAMESPACE.maintainer="kbaegis@gmail.com" \
+  $NAMESPACE.description="Base container for libressl based images." \
+  $NAMESPACE.usage="https://$REPO/NullLabs/oci/src/master/$NAME/README.md" \
+  $NAMESPACE.url="https://$REPO/NullLabs/oci/src/master/$NAME/README.md" \
+  $NAMESPACE.vcs-url="https://services.home/git/NullLabs/oci/src/master/$NAME/" \
+  $NAMESPACE.vcs-ref="$GHEAD" \
+  $NAMESPACE.vendor="NullLabs" \
+  $NAMESPACE.version="beta-0.0.2" \
+  $NAMESPACE.schema-version="1.0" \
+  $NAMESPACE.docker.cmd="docker run -it --name $NAMESPACE-$NAME --privileged -l $NAMESPACE.image=$URI $URI:latest" \
+  $NAMESPACE.docker.cmd.devel="docker run -it --name $NAMESPACE-$NAME-tmp --privileged -l $NAMESPACE.image=$URI --rm --entrypoint=/bin/bash $URI:latest" \
+  $NAMESPACE.docker.cmd.test="docker run --entrypoint=/usr/local/bin/test.sh $URI:latest" \
+  $NAMESPACE.docker.cmd.debug="docker exec -it $NAMESPACE-$NAME bash" \
+  $NAMESPACE.docker.cmd.help="docker exec -it $NAMESPACE-$NAME /usr/local/bin/entrypoint.sh --help" \
+  $NAMESPACE.docker.params="" \
+  $NAMESPACE.cri.cmd="" \
+  $NAMESPACE.cri.cmd.devel="podman --cgroup-manager cgroupfs run --entrypoint=/bin/bash $URI:latest" \
+  $NAMESPACE.cri.cmd.test="podman --cgroup-manager cgroupfs run --entrypoint=/usr/local/bin/test.sh $URI:latest" \
+  $NAMESPACE.cri.cmd.debug="" \
+  $NAMESPACE.cri.cmd.help="" \
+  $NAMESPACE.cri.params=""
+ENV GENESIS="$GENESIS:$BDATE ($GHEAD)"
 ADD .x509/* /tmp/
 RUN echo 'USE="${USE} libressl"' >> /etc/portage/make.conf \
  && echo 'USE="${USE} libressl"' >> /etc/portage/make.conf.bak \
