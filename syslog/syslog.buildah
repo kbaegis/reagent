@@ -1,16 +1,19 @@
 FROM crucible.lab:4000/oci/libressl:latest
-#ARG REGISTRY="crucible.lab:4000/"
-#ARG CNAMESPACE="oci/"
-#ARG BDATE="$(date --rfc-3339=date)"
-#ARG GHEAD="$(git rev-parse HEAD)"
+ARG GENESIS="fakegenesis$THREADS"
+ARG REGISTRY="crucible.lab:4000/"
+ARG CNAMESPACE="oci/"
+ARG NAME="syslog"
+ARG BDATE="$(date --rfc-3339=date)"
+ARG GHEAD="$(git rev-parse HEAD)"
+ARG GENESIS="${REGISTRY}${CNAMESPACE}${NAME}:${BDATE} (${GHEAD});${GENESIS}"
 ARG REPO="https://server.lab/git"
-ARG NAME="java"
-ARG URI="crucible.lab:4000/oci/java"
+ARG URI="crucible.lab:4000/oci/portage"
 ARG NAMESPACE="nulllabs"
+ARG GBRANCH="master"
 LABEL $NAMESPACE.build-date="$BDATE" \
   $NAMESPACE.name="$NAME" \
   $NAMESPACE.maintainer="kbaegis@gmail.com" \
-  $NAMESPACE.description="Base portage container for java." \
+  $NAMESPACE.description="Base portage container from catalyst/stage3." \
   $NAMESPACE.usage="https://$REPO/NullLabs/oci/src/master/$NAME/README.md" \
   $NAMESPACE.url="https://$REPO/NullLabs/oci/src/master/$NAME/README.md" \
   $NAMESPACE.vcs-url="https://services.home/git/NullLabs/oci/src/master/$NAME/" \
@@ -29,15 +32,20 @@ LABEL $NAMESPACE.build-date="$BDATE" \
   $NAMESPACE.cri.cmd.test="podman --cgroup-manager cgroupfs run --entrypoint=/usr/local/bin/test.sh $URI:latest" \
   $NAMESPACE.cri.cmd.debug="" \
   $NAMESPACE.cri.cmd.help="" \
-  $NAMESPACE.cri.params="" \
-ENV GENESIS="$GENESISARG" \
-    SELF="$SELFARG"
-RUN printf "dev-java/icedtea alsa cups -gtk headless-awt jbootstrap libressl -nsplugin sctp shenandoah source sunec -webstart\ndev-java/icedtea-bin -gtk -webstart -alsa -cups\napp-text/ghostscript-gpl cups dbus tiff unicode\ndev-util/pkgconfig internal-glib\n" >> /etc/portage/package.use/java \
- && printf "dev-java/icedtea ~amd64\n" >> /etc/portage/package.accept_keywords \
- && printf 'FEATURES="-usersandbox"\n' >> /etc/portage/env/nousersandbox.conf \
- && printf "dev-java/icedtea nousersandbox.conf\ndev-java/maven-bin nousersandbox.conf\ndev-libs/gobject-introspection nousersandbox.conf\n" >> /etc/portage/package.env \
- && emerge dev-java/icedtea dev-java/maven-bin \
- && $HOME/.build/rsync.sh \
- && emerge --depclean --with-bdeps=n
+  $NAMESPACE.cri.params="PORTAGE_BINHOST,PORTDIR,PKGDIR,FEATURES,MAKEOPTS,EMERGE_DEFAULT_OPTS,GENTOO_MIRRORS,SSL_CERT_FILE,EDITOR,RSYNCURI" \
+  $NAMESPACE.genesis="$GENESIS"
+ENV GENESIS="$GENESIS"
 
-ENTRYPOINT ["/bin/bash"]
+RUN printf 'app-admin/syslog-ng amqp caps dbi geoip ipv6 json pacct python redis smtp spoof-source tcpd\n' >>/etc/portage/package.use/syslog-ng \
+ && printf 'app-admin/syslog-ng ~amd64\ndev-libs/ivykis ~amd64\n' >>/etc/portage/package.accept_keywords \
+ && emerge -bg app-admin/syslog-ng
+ADD etc/* /etc/syslog-ng/
+ADD bin/* /usr/local/bin/
+
+EXPOSE 6005/tcp
+
+ENTRYPOINT ["/usr/sbin/syslog-ng"]
+
+CMD ["-F"]
+
+HEALTHCHECK --interval=30s --timeout=5s CMD /usr/local/bin/healthcheck.sh

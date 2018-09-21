@@ -1,10 +1,10 @@
 FROM crucible.lab:4000/oci/gentoo-stage3-amd64-hardened:latest
-#ARG REGISTRY="crucible.lab:4000/"
-#ARG CNAMESPACE="oci/"
-#ARG BDATE="$(date --rfc-3339=date)"
-#ARG GHEAD="$(git rev-parse HEAD)"
+ARG REGISTRY="crucible.lab:4000/"
+ARG CNAMESPACE="oci/"
+ARG BDATE="$(date --rfc-3339=date)"
+ARG GHEAD="$(git rev-parse HEAD)"
 ARG REPO="https://server.lab/git"
-ARG NAME="portage"
+ARG NAME="labeltest"
 ARG URI="crucible.lab:4000/oci/portage"
 ARG NAMESPACE="nulllabs"
 ARG GBRANCH="master"
@@ -33,7 +33,7 @@ LABEL $NAMESPACE.build-date="$BDATE" \
   $NAMESPACE.cri.cmd.test="podman --cgroup-manager cgroupfs run --entrypoint=/usr/local/bin/test.sh $URI:latest" \
   $NAMESPACE.cri.cmd.debug="" \
   $NAMESPACE.cri.cmd.help="" \
-  $NAMESPACE.cri.params="PORTAGE_BINHOST,PORTDIR,PKGDIR,FEATURES,MAKEOPTS,EMERGE_DEFAULT_OPTS,GENTOO_MIRRORS,SSL_CERT_FILE,EDITOR,RSYNCURI" 
+  $NAMESPACE.cri.params="PORTAGE_BINHOST,PORTDIR,PKGDIR,FEATURES,MAKEOPTS,EMERGE_DEFAULT_OPTS,GENTOO_MIRRORS,SSL_CERT_FILE,EDITOR,RSYNCURI"
 ENV PORTAGE_BINHOST="https://172.23.255.254/generic/" \
   PORTDIR="/usr/portage" \
   PKGDIR="/usr/portage/packages/generic" \
@@ -46,34 +46,10 @@ ENV PORTAGE_BINHOST="https://172.23.255.254/generic/" \
   RSYNCURI=$RSYNCURI \
   GENESIS="$GENESISARG" \
   SELF="$SELFARG"
-ADD .build/ /root/.build/
-RUN mkdir -p /usr/local/share/ca-certificates/ \
- && mkdir -p /etc/portage/env/ \
- && mkdir -p /etc/portage/package.use/ \
- && mkdir -p /etc/portage/repos.conf \
- && mkdir -p /usr/portage/distfiles \
- && mkdir -p $PKGDIR \
- && printf "[gentoo]\nlocation = /usr/portage\nsync-type = rsync\nsync-uri = $RSYNCURI\nauto-sync = yes\nsync-rsync-verify-metamanifest = no\n" >/etc/portage/repos.conf/gentoo.conf \
- && chmod 764 /usr/portage/distfiles/ \
- && chown portage:portage /usr/portage/distfiles/ \
- && touch /var/lib/portage/world \
- && printf 'nameserver 172.21.255.254\nnameserver 172.23.255.101\n' >/etc/resolv.conf
-ADD .x509/CA.cert.pem /usr/local/share/ca-certificates/
-RUN emaint sync -a \
- && printf 'app-misc/ca-certificates cacert\n' >/etc/portage/package.use/ca-certificates \
- && printf "EMERGE_DEFAULT_OPTS='-bgq --nospinner'\n" >>/etc/portage/make.conf \
- && FETCHCOMMAND='wget -t 3 -T 60 --passive-ftp --no-check-certificate -O "${DISTDIR}/${FILE}" "${URI}"' RESUMECOMMAND='wget -c -t 3 -T 60 --passive-ftp --no-check-certificate -O "${DISTDIR}/${FILE}" "${URI}"' emerge -1 app-misc/ca-certificates \
- && update-ca-certificates \
- && cat /usr/local/share/ca-certificates/CA.cert.pem >>/etc/ssl/certs/ca-certificates.crt \
- && emerge --oneshot portage \
- && emerge dev-vcs/git app-editors/vim @preserved-rebuild \
- && emerge -DNu world --keep-going \
- && $HOME/.build/rsync.sh \
- && eselect python set python3.6 \
- && emerge --depclean --with-bdeps=n \
- && printf "US/Mountain\n" >/etc/timezone \
- && git config --global user.email 'build-ci@services.mgmt' \
- && git config --global user.name 'build-ci' \
- && printf 'export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n' >>/etc/skel/.bashrc
+RUN printf "Test output genesis: $GENESISARG\n"
+RUN printf "Test output self: $SELFARG\n"
+RUN printf "Test output genesis environment variable: $GENESIS\n"
+RUN printf "Test output self environment variable: $SELF\n"
+RUN printf "Test output file assigned THREADS: $THREADS\n"
 
 ENTRYPOINT ["/bin/bash"]

@@ -19,7 +19,7 @@ import cProfile
 SCRIPTPATH = os.path.dirname(os.path.realpath(__file__))
 DATE = time.strftime("%Y-%m-%d") #used for image tag
 TIMEZONE = "America/Denver" #adjust as needed
-GITVERSION = subprocess.check_output(["git", "-C", SCRIPTPATH, "rev-parse", "HEAD"]) #appended to image metadata
+GITVERSION = subprocess.check_output(["git", "-C", SCRIPTPATH, "rev-parse", "--short", "HEAD"]) #appended to image metadata
 REGISTRY = "crucible.lab:4000" #point to your registry
 NAMESPACE = "/oci/" #adjust as needed
 STAGE3URL = "https://crucible.lab/distfiles/stage3-amd64-hardened-latest.tar.bz2" #point to any valid stage3
@@ -34,6 +34,8 @@ for root, dirnames, filenames in os.walk(SCRIPTPATH):
 PROJECT_FILES = set(BUILDAH_FILES) #a set of *..buildah files located under the root directory and excludes INITIAL_FILES
 LOGFILE = ''.join([SCRIPTPATH, '/build.log']) #logfile used throughout
 TESTLABEL = 'nulllabs.cri.cmd.test' #What label your dockerfiles use to store the test commands
+GENESISLABEL = 'nulllabs.genesis' #Where reagent looks for the layer chain
+SELFLABEL = 'nulllabs.self' #Where reagent documents the image built
 
 ##Return Convention:
 # 0: success
@@ -47,12 +49,12 @@ class tcolors(object):
         self.ISUCCESS = '\033[94m' #intermediate success; blue
         self.SUCCESS = '\033[92m' #success; green
         self.VOUT = '\033[0;37m' #Verbose output; White/Grey
-        self.PROGRESS = '\033[33m' #Function progress; Yellow
+        self.NOTIFY = '\033[33m' #Function progress; Yellow
         self.FAILURE = '\033[31m' #Failure; Red
         self.ENDC = '\033[0m' #Color Reset
         self.BOLD = '\033[1m' #Bold
         self.UNDERLINE = '\033[4m' #Underline
-        self.codeMapping = {0: self.SUCCESS, 1: self.FAILURE, -1: self.ISUCCESS, -2: self.VOUT, 2: self.PROGRESS}
+        self.codeMapping = {0: self.SUCCESS, 1: self.FAILURE, -1: self.ISUCCESS, -2: self.VOUT, 2: self.NOTIFY}
 
 class subprocessReturn(object):
     """Class containing both the Popen state tracking (call) and a list of output lines (output) from a subprocess run."""
@@ -62,28 +64,38 @@ class subprocessReturn(object):
 
 class pendingOperation(object):
     """Class storing a procedure to be run inside signal_handler if invoked."""
-    def setOperation(self, name, profile, methodname):
-        self.name = name
-        self.profile = profile
-        self.method = getattr(imageList, methodname)
-    
     def enableOperation(self, name, methodname):
         self.name = name
-        self.method = getattr(imageList, methodname)
+        self.method = getattr(containerGroup, methodname)
         self.profile = cProfile.Profile()
-        self.profile.enable()
+        self.profile.enable(subcalls=False,builtins=False)
         return self.profile
     
-    def clearOperation(self):
+    def completeOperation(self):
+        #progressNotify("Calculating runtime", -2)
+        #run_time = profileTiming("^\('" + __file__ + "', [0-9]*, '(?!signal_handler).*$", self.profile)
+        run_time = profileTiming("^\('" + __file__ + ".*$", self.profile)
+        #run_time = profileTiming(".*", self.profile)
+        #progressNotify("Calculating pausetime", -2)
+        pause_time = profileTiming("^\('" + __file__ + "', [0-9]*, 'signal_handler.*$", self.profile)
+        elapsed = run_time - pause_time
+        self.profile.disable()
         del self.name
         del self.profile
         del self.method
+        return elapsed
 
     def run_method(self):
-        elapsed = profileTiming(".*", self.profile, persist = False)
+        #progressNotify("Calculating runtime", -2)
+        #run_time = profileTiming("^\('" + __file__ + "', [0-9]*, '(?!signal_handler).*$", self.profile)
+        run_time = profileTiming("^\('" + __file__ + ".*$", self.profile)
+        #run_time = profileTiming(".*", self.profile)
+        #progressNotify("Calculating pausetime", -2)
+        pause_time = profileTiming("^\('" + __file__ + "', [0-9]*, 'signal_handler.*$", self.profile)
+        elapsed = run_time - pause_time
         self.method(images, self.name, -1, time = elapsed)
 
-class imageList(object):
+class containerGroup(object):
     """Class tracking images in various container image states."""
     def __init__(self, args):
         self.images = {} #used for state tracking
@@ -281,11 +293,6 @@ def signal_handler(signum, frame):
             sys.exit(0)
         elif confirm == 'n' or confirm == 'no':
             signal.signal(2, signal_handler)
-            try:
-                pending.profile.enable()
-            except AttributeError:
-                print("Couldn't restart profiling.")
-                pass
             return 0
 
 def parse_arguments(arguments):
@@ -351,7 +358,8 @@ def portage_build(build_portage, images, verbose = False):
         images.addImage(name, image_type = 'bootstrapping')
         prime_tag = images.images[name]['tags'][0]
         prime_uri = images.base_uri + name + ':' + prime_tag
-        sync_target_run = sp_run("sudo buildah from " + prime_uri, verbose)
+        latest_uri = images.base_uri + name + ':latest'
+        sync_target_run = sp_run("sudo buildah from " + latest_uri, verbose)
         sync_target = sync_target_run.output[-1].rstrip()
         sync_target_mount_run = sp_run("sudo buildah mount " + sync_target, verbose)
         sync_target_mount = sync_target_mount_run.output[-1].rstrip()
@@ -359,15 +367,13 @@ def portage_build(build_portage, images, verbose = False):
         commit = sp_run("sudo buildah commit --format oci --rm -q --squash " + sync_target + " " + prime_uri, verbose)
         for tag in images.images[name]['tags'][1:]:
             sp_run("sudo buildah tag " + prime_uri + " " + prime_uri.replace(prime_tag,tag), verbose)
-        elapsed = profileTiming(".*", pbprofile, persist = False)
+        elapsed = pending.completeOperation()
         if sync_target_run.call.returncode == 0 and commit.call.returncode == 0:
             images.updateBuilt(name, 0, time = elapsed)
-            pending.clearOperation()
             progressNotify("Portage build succeeded.", 0)
             return 0
         else:
             images.updateBuilt(name, 1, time = elapsed)
-            pending.clearOperation()
             progressNotify("Portage build failed.", 1)
             return 1
 
@@ -390,7 +396,8 @@ def catalyst_build(build_catalyst, images, portagedir, bindpath = None, verbose 
             bindpath = ''.join([SCRIPTPATH, '/.stages/'])
         progressNotify("Building Catalyst.", 2)
         images.addImage(name, image_type = 'bootstrapping')
-        prime_tag =  images.images[name]['tags'][0]
+        #prime_tag =  images.images[name]['tags'][0]
+        prime_tag =  "latest"
         prime_uri = images.base_uri + name + ':' + prime_tag
         emaint = sp_run("emaint -a sync", verbose)
         catalyst_cache_run = sp_run("sudo buildah from " + prime_uri, verbose)
@@ -404,7 +411,7 @@ def catalyst_build(build_catalyst, images, portagedir, bindpath = None, verbose 
         if not os.path.isfile("/var/tmp/catalyst/builds/hardened/stage3-amd64-hardened-latest.tar.bz2"):
             progressNotify("Stage3 not found. Downloading from " + STAGE3URL, 2)
             os.system("sudo mkdir -p /var/tmp/catalyst/builds/hardened/")
-            curl = sp_run("sudo curl -s " + STAGE3URL + " -o /var/tmp/catalyst/builds/hardened/stage3-amd64-hardened-latest.tar.bz2", verbose)
+            curl = sp_run("sudo curl " + STAGE3URL + " -o /var/tmp/catalyst/builds/hardened/stage3-amd64-hardened-latest.tar.bz2", verbose)
         specfile_list = [entry for entry in os.listdir("/var/tmp/catalyst/builds/default/") if re.match(r'.*\.spec$', entry)]
         snapshot = sp_run("sudo catalyst -s latest", verbose)
         for specfile in specfile_list:
@@ -413,7 +420,7 @@ def catalyst_build(build_catalyst, images, portagedir, bindpath = None, verbose 
             progressNotify("Catalyst build using specfile: " + specfile + ".", 2)
             build = sp_run("sudo catalyst -f " + ''.join(["/var/tmp/catalyst/builds/default/", specfile]), verbose)
             elapsed = profileTiming(".*", csprofile, persist = False)
-            progressNotify("Specfile " + specfile + " ended after " + elapsed + " seconds.", build.call.returncode)
+            progressNotify("Specfile " + specfile + " ended after " + str(elapsed) + " seconds.", build.call.returncode)
         catalyst_bind_umount = sp_run("sudo umount /var/tmp/catalyst/packages/", verbose)
         build_bind_umount = sp_run("sudo umount /var/tmp/catalyst/builds/", verbose)
         commit = sp_run("sudo buildah commit --format oci --rm -q --squash " + catalyst_cache + " " + prime_uri, verbose)
@@ -431,10 +438,8 @@ def catalyst_build(build_catalyst, images, portagedir, bindpath = None, verbose 
 def stage3_bootstrap(build_initial, images, verbose = False):
     """Unpack stage3 bootstrap image inside a blank container"""
     if build_initial is True:
-        s3profile = cProfile.Profile()
         name = "gentoo-stage3-amd64-hardened"
-        pending.setOperation(name, s3profile, 'updateBuilt')
-        s3profile.enable()
+        s3profile = pending.enableOperation(name, 'updateBuilt')
         images.addImage(name, image_type = 'bootstrapping')
         progressNotify("Building base container from scratch + stage3.", 2)
         prime_tag =  images.images[name]['tags'][0]
@@ -455,21 +460,19 @@ def stage3_bootstrap(build_initial, images, verbose = False):
         timezonefile.flush()
         timezonefile.close()
         sp_run("sudo buildah run " + scratch + " mkdir -p /usr/portage", verbose)
-        sp_run("sudo buildah config --cmd /bin/bash --label " + ''.join([REGISTRY, NAMESPACE, name]) + " " + scratch, verbose)
+        sp_run("sudo buildah config --cmd /bin/bash --label " + GENESISLABEL + '=scratch' + ' --label ' + SELFLABEL + '="' + prime_uri + ' (' + GITVERSION.decode("ascii").rstrip() + ')" ' + '--env GENESIS="scratch" ' + scratch, verbose)
         sp_run("sudo buildah umount " + scratch, verbose)
         commit = sp_run("sudo buildah commit --format oci --rm -q --squash " + scratch + " " + ''.join([REGISTRY, NAMESPACE, name, ":", DATE]), verbose)
         for tag in images.images[name]['tags'][1:]:
             sp_run("sudo buildah tag " + prime_uri + " " + prime_uri.replace(prime_tag, tag), verbose)
-        elapsed = profileTiming(".*", s3profile, persist = False)
+        elapsed = pending.completeOperation()
         if copy_stage3.call.returncode == 0 and commit.call.returncode == 0:
-            progressNotify("Base image complete.", 0)
             images.updateBuilt(name, 0, time = elapsed)
-            pending.clearOperation()
+            progressNotify("Base image complete.", 0)
             return 0
         else:
-            progressNotify("Base image complete (with errors).", 1)
             images.updateBuilt(name, 1, time = elapsed)
-            pending.clearOperation()
+            progressNotify("Base image complete (with errors).", 1)
             return 1
 
 def stage3_spawn(build_initial, verbose = False):
@@ -481,33 +484,53 @@ def stage3_spawn(build_initial, verbose = False):
         progressNotify("Spawning stage3 complete.", 2)
         return stage3
 
-def buildah_build(file, image_name, path, images, portagedir, verbose = False, profiler = None):
+def buildah_build(file, image_name, path, images, portagedir, verbose = False, profiler = None, capabilities = None):
     """Build a buildah file"""
-    bprofile = cProfile.Profile()
-    pending.setOperation(image_name, bprofile, 'updateBuilt')
-    bprofile.enable()
+    bprofile = pending.enableOperation(image_name, 'updateBuilt')
     images.addImage(image_name)
     uri = images.base_uri + image_name
     tags = images.images[image_name]['tags']
     tagstr = ""
     for tag in tags:
         tagstr = tagstr + '-t ' + uri + ':' + tag + ' '
-    command = "sudo buildah bud --cap-add CAP_net_raw -v " + ''.join([portagedir, ":/usr/portage/"]) + " -f " + file + " " + tagstr + " --build-arg " + ''.join(["BDATE=", DATE]) + " --build-arg " + ''.join(["GHEAD=", GITVERSION.decode("ascii")]) + " " + path
+    capargs = ''
+    for cap in capabilities or []:
+        capargs = "--cap-add " + cap + ' ' + capargs
+    filegrep = sp_run("grep ^FROM " + file)
+    fromout = filegrep.output[0].replace('FROM ', '')
+    image_jlist = ""
+    fromimage = sp_run("buildah inspect " + fromout, False)
+    #fromimage = sp_run("buildah inspect " + fromout, verbose)
+    for line in fromimage.output:
+        image_jlist = image_jlist + line
+    try:
+        fromjson = json.loads(image_jlist)
+        genesis = fromjson['OCIv1']['config']['Labels'][GENESISLABEL]
+        priorSelfLabel = fromjson['OCIv1']['config']['Labels'][SELFLABEL]
+    #except KeyError:
+    except:
+        genesis = "exception (unknown)"
+        priorSelfLabel = fromout.rstrip()
+    imageGenesis = priorSelfLabel + '; ' + genesis
+    selfVersion = uri + ':' + tag + ' (' + GITVERSION.decode("ascii").rstrip() + ')'
+    genesisArg = 'GENESISARG="' + imageGenesis + '"' #Presently unassignable in ENV, valid at build time.
+    genesisLabel = GENESISLABEL + '="' + imageGenesis + '"'
+    selfArg = 'SELFARG="' + selfVersion + '"' #Presently unassignable in ENV, valid at build time.
+    selfLabel = SELFLABEL + '="' + selfVersion + '"'
+    command = "sudo buildah bud " + capargs + "-v " + ''.join([portagedir, ":/usr/portage/"]) + " -f " + file + " " + tagstr + " --build-arg " + ''.join(["BDATE=", DATE]) + " --build-arg " + ''.join(["GHEAD=", GITVERSION.decode("ascii").rstrip()]) + " --build-arg " + selfArg + " --build-arg " + genesisArg+ " --label " + selfLabel + " --label " + genesisLabel + " " + path
     if verbose:
         progressNotify("Build initiated for " + image_name + " with " + command, 2)
     else:
         progressNotify("Build initiated for " + image_name, 2)
     build = sp_run(command, verbose)
-    elapsed = profileTiming(".*", bprofile, persist = False)
+    elapsed = pending.completeOperation()
     if build.call.returncode == 0:
-        progressNotify("Build of " + image_name + " succeeded.", 0)
         images.updateBuilt(image_name, 0, time = elapsed)
-        pending.clearOperation()
+        progressNotify("Build of " + image_name + " succeeded.", 0)
         return 0
     else:
-        progressNotify("Build of " + image_name + " failed.", 1)
         images.updateBuilt(image_name, 1, time = elapsed)
-        pending.clearOperation()
+        progressNotify("Build of " + image_name + " failed.", 1)
         return 1
 
 def initial_build(build_initial, images, portagedir, verbose = False):
@@ -544,23 +567,24 @@ def project_build(build_targets, images, portagedir, verbose = False):
 
 def cleanup(verbose = False):
     """Remove any remaining containers"""
-    progressNotify("Performing cleanup.", 2)
-    remove = sp_run("sudo buildah rm -a", verbose)
-    if remove.call.returncode == 0:
-        progressNotify("Cleanup complete.", 0)
-        return 0
-    else:
-        progressNotify("Cleanup complete (with errors).", 1)
-        return 1
+    listing = sp_run("sudo buildah containers -q", verbose)
+    if len(listing.output) > 0:
+        progressNotify("Performing cleanup.", 2)
+        remove = sp_run("sudo buildah rm -a", verbose)
+        if remove.call.returncode == 0:
+            progressNotify("Cleanup complete.", 0)
+            return 0
+        else:
+            progressNotify("Cleanup complete (with errors).", 1)
+            return 1
+    return 0
 
 def test_images(test_images, images, verbose = False):
     """Test image"""
     if test_images:
         progressNotify("Image testing.", 2)
         for image in images.listUntested():
-            tprofile = cProfile.Profile()
-            pending.setOperation(image, tprofile, 'updateTested')
-            tprofile.enable()
+            pending.enableOperation(image, 'updateTested')
             image_olist = ""
             inspect = sp_run("buildah inspect " + images.base_uri + image + ':' + images.images[name]['tags'][0], False)
             for entry in inspect.output:
@@ -573,9 +597,8 @@ def test_images(test_images, images, verbose = False):
             test = sp_run(test_command, verbose)
             nametag = image.rsplit(sep='/')[-1]
             name = ''.join(nametag.rsplit(sep=':')[:-1])
-            elapsed = profileTiming(".*", tprofile, persist = False)
+            elapsed = pending.completeOperation()
             images.updateTested(name, test.call.returncode, time = elapsed)
-            pending.clearOperation()
             if test.call.returncode == 0:
                 progressNotify("Image tests passed.", 0)
             if test.call.returncode == 1:
@@ -595,8 +618,7 @@ def registry_push(disable_registry, images, verbose = False):
                 append = ""
             for name in name_list:
                 pprofile = cProfile.Profile()
-                pending.setOperation(name, pprofile, 'updatePushed')
-                pprofile.enable()
+                pprofile = pending.enableOperation(name, 'updatePushed')
                 push_failures = 0
                 prime_tag =  images.images[name]['tags'][0]
                 prime_uri = images.base_uri + name + ':' + prime_tag
@@ -616,13 +638,11 @@ def registry_push(disable_registry, images, verbose = False):
                             push_failures = push_failures + 1
                         elif copy_run.call.returncode == 0:
                             progressNotify("Successfully copied " + tagged_uri, 0)
-                elapsed = profileTiming(".*", pprofile, persist = False)
+                elapsed = pending.completeOperation()
                 if push_failures > 0:
                     images.updatePushed(name, 1, time = elapsed)
-                    pending.clearOperation()
                 elif push_failures == 0:
                     images.updatePushed(name, 0, time = elapsed)
-                    pending.clearOperation()
             progressNotify("Registry upload complete.", 2)
         return 0
     return 0
@@ -638,21 +658,19 @@ def progressNotify(message, code):
 
 def profileTiming(search, profiler, persist = True):
     """Function to return time consumed by expression passed."""
+    #DEFECT: Presently, cProfile presents no ability to pause profiling for signal_handle. This can introduce timing inaccuracies when a user hits ctrl+c to pause or retrieve a summary of the build status.
     timeSum = 0
-    profiler.create_stats() #Populate profiler.stats
-    keylist=profiler.stats.keys()
+    profiler.snapshot_stats()
     stats=profiler.stats
-    if persist:
-        profiler.enable() #Continue profiling
+    keylist=stats.keys()
     for key in keylist:
         string=str(key)
-        regex=re.compile(''.join([".*", search, ".*"])) #Find any tuple-key matching search name
-        #if regex.search(string) and "sp_run" not in string and "signal_handler" not in string: #Exclude nested functions
+        regex=re.compile(search) #Find any tuple-key matching search name
         if regex.search(string):
-            #print("Key:" + string + "//" + "Value:" + str(stats[key]))
-            time = stats[key][3]
+            #print("Key:" + string + "//" + "Value:" + str(stats[key][2]) + ", " + str(stats[key][3]))
+            time = stats[key][2]
             timeSum = time + timeSum
-    timeSumStr = str(timeSum)
+            #print(str(timeSum))
     return timeSum
 
 ##Main
@@ -660,7 +678,7 @@ if __name__ == "__main__":
     pending = pendingOperation()
     signal.signal(2, signal_handler)
     args = parse_arguments(sys.argv[1:])
-    images = imageList(args)
+    images = containerGroup(args)
     children = handler()
     portage_build = portage_build(args.build_portage, images, verbose = args.verbose)
     portagedir = portage_overlay(args, verbose = args.verbose)
@@ -679,4 +697,3 @@ if __name__ == "__main__":
         for line in status:
            log.write(line + "\n")
     cleanup(verbose = args.verbose)
-    #gprofile.disable()

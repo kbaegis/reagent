@@ -1,5 +1,4 @@
 FROM crucible.lab:4000/oci/go:latest
-ARG GENESIS="crucible.lab:4000/oci/go"
 ARG BDATE="$(date --rfc-3339=date)"
 ARG GHEAD="$(git rev-parse HEAD)"
 ARG GBRANCH="master"
@@ -18,8 +17,8 @@ LABEL $NAMESPACE.build-date="$BDATE" \
   $NAMESPACE.vendor="NullLabs" \
   $NAMESPACE.version="beta-0.0.2" \
   $NAMESPACE.schema-version="1.0" \
-  $NAMESPACE.docker.cmd="docker run -it --name $NAMESPACE-$NAME --privileged -l $NAMESPACE.image=$URI $URI:latest" \
-  $NAMESPACE.docker.cmd.devel="docker run -it --name $NAMESPACE-$NAME-tmp --privileged -l $NAMESPACE.image=$URI --rm --entrypoint=/bin/bash $URI:latest" \
+  $NAMESPACE.docker.cmd="docker run -h $NAMESPACE-$NAME -it --name $NAMESPACE-$NAME --privileged -l $NAMESPACE.image=$URI $URI:latest" \
+  $NAMESPACE.docker.cmd.devel="docker run -h $NAMESPACE-$NAME-tmp -it --name $NAMESPACE-$NAME-tmp --privileged -l $NAMESPACE.image=$URI --rm --entrypoint=/bin/bash $URI:latest" \
   $NAMESPACE.docker.cmd.test="docker run --entrypoint=/usr/local/bin/test.sh $URI:latest" \
   $NAMESPACE.docker.cmd.debug="docker exec -it $NAMESPACE-$NAME bash" \
   $NAMESPACE.docker.cmd.help="docker exec -it $NAMESPACE-$NAME /usr/local/bin/entrypoint.sh --help" \

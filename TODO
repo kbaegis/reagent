@@ -1,7 +1,5 @@
 test bootstrapping without image
-Progress bar handling
 validate profiling timing info
-threading for -b builds
 implement dry-run functionality
 bootstrapping function
 run as non-root user

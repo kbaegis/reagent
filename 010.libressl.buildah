@@ -1,12 +1,15 @@
 ##Converts image from openssl to libressl
 FROM crucible.lab:4000/oci/portage:latest
-ARG GENESIS="crucible.lab:4000/oci/portage"
-ARG BDATE="$(date --rfc-3339=date)"
-ARG GHEAD="$(git rev-parse HEAD)"
+#ARG REGISTRY="crucible.lab:4000/"
+#ARG CNAMESPACE="oci/"
+#ARG BDATE="$(date --rfc-3339=date)"
+#ARG GHEAD="$(git rev-parse HEAD)"
 ARG REPO="https://server.lab/git"
-ARG NAME="libressl"
 ARG URI="crucible.lab:4000/oci/gentoo-stage3-amd64-hardened"
 ARG NAMESPACE="nulllabs"
+ARG REGISTRY="crucible.lab:4000/"
+ARG CNAMESPACE="oci/"
+ARG NAME="libressl"
 LABEL $NAMESPACE.build-date="$BDATE" \
   $NAMESPACE.name="$NAME" \
   $NAMESPACE.maintainer="kbaegis@gmail.com" \
@@ -30,7 +33,8 @@ LABEL $NAMESPACE.build-date="$BDATE" \
   $NAMESPACE.cri.cmd.debug="" \
   $NAMESPACE.cri.cmd.help="" \
   $NAMESPACE.cri.params=""
-ENV GENESIS="$GENESIS:$BDATE ($GHEAD)"
+ENV GENESIS="$GENESISARG" \
+    SELF="$SELFARG"
 ADD .x509/* /tmp/
 RUN echo 'USE="${USE} libressl"' >> /etc/portage/make.conf \
  && echo 'USE="${USE} libressl"' >> /etc/portage/make.conf.bak \

@@ -1,7 +1,8 @@
 FROM crucible.lab:4000/oci/libressl:latest
-ARG GENESIS="crucible.lab:4000/oci/libressl"
-ARG BDATE="$(date --rfc-3339=date)"
-ARG GHEAD="$(git rev-parse HEAD)"
+#ARG REGISTRY="crucible.lab:4000/"
+#ARG CNAMESPACE="oci/"
+#ARG BDATE="$(date --rfc-3339=date)"
+#ARG GHEAD="$(git rev-parse HEAD)"
 ARG REPO="https://server.lab/git"
 ARG NAME="go"
 ARG URI="crucible.lab:4000/oci/libressl"
@@ -31,7 +32,8 @@ LABEL $NAMESPACE.build-date="$BDATE" \
   $NAMESPACE.cri.params="GOPATH,GOBIN"
 ENV GOPATH="/root/.go" \
   GOBIN="/root/.go/bin" \
-  GENESIS="$GENESIS:$BDATE ($GHEAD)"
+  GENESIS="$GENESISARG" \
+  SELF="$SELFARG"
 RUN mkdir $HOME/.go \
  && printf 'FEATURES="-usersandbox"\n' >> /etc/portage/env/nousersandbox.conf \
  && printf 'dev-lang/go nousersandbox.conf\n' >> /etc/portage/package.env \
