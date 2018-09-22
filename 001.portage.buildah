@@ -1,8 +1,4 @@
 FROM crucible.lab:4000/oci/gentoo-stage3-amd64-hardened:latest
-#ARG REGISTRY="crucible.lab:4000/"
-#ARG CNAMESPACE="oci/"
-#ARG BDATE="$(date --rfc-3339=date)"
-#ARG GHEAD="$(git rev-parse HEAD)"
 ARG REPO="https://server.lab/git"
 ARG NAME="portage"
 ARG URI="crucible.lab:4000/oci/portage"

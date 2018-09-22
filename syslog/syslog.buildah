@@ -1,11 +1,4 @@
 FROM crucible.lab:4000/oci/libressl:latest
-ARG GENESIS="fakegenesis$THREADS"
-ARG REGISTRY="crucible.lab:4000/"
-ARG CNAMESPACE="oci/"
-ARG NAME="syslog"
-ARG BDATE="$(date --rfc-3339=date)"
-ARG GHEAD="$(git rev-parse HEAD)"
-ARG GENESIS="${REGISTRY}${CNAMESPACE}${NAME}:${BDATE} (${GHEAD});${GENESIS}"
 ARG REPO="https://server.lab/git"
 ARG URI="crucible.lab:4000/oci/portage"
 ARG NAMESPACE="nulllabs"
@@ -32,9 +25,9 @@ LABEL $NAMESPACE.build-date="$BDATE" \
   $NAMESPACE.cri.cmd.test="podman --cgroup-manager cgroupfs run --entrypoint=/usr/local/bin/test.sh $URI:latest" \
   $NAMESPACE.cri.cmd.debug="" \
   $NAMESPACE.cri.cmd.help="" \
-  $NAMESPACE.cri.params="PORTAGE_BINHOST,PORTDIR,PKGDIR,FEATURES,MAKEOPTS,EMERGE_DEFAULT_OPTS,GENTOO_MIRRORS,SSL_CERT_FILE,EDITOR,RSYNCURI" \
-  $NAMESPACE.genesis="$GENESIS"
-ENV GENESIS="$GENESIS"
+  $NAMESPACE.cri.params="PORTAGE_BINHOST,PORTDIR,PKGDIR,FEATURES,MAKEOPTS,EMERGE_DEFAULT_OPTS,GENTOO_MIRRORS,SSL_CERT_FILE,EDITOR,RSYNCURI"
+ENV GENESIS="$GENESISARG" \
+    SELF="$SELFARG"
 
 RUN printf 'app-admin/syslog-ng amqp caps dbi geoip ipv6 json pacct python redis smtp spoof-source tcpd\n' >>/etc/portage/package.use/syslog-ng \
  && printf 'app-admin/syslog-ng ~amd64\ndev-libs/ivykis ~amd64\n' >>/etc/portage/package.accept_keywords \

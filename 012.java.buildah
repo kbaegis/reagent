@@ -1,8 +1,4 @@
 FROM crucible.lab:4000/oci/libressl:latest
-#ARG REGISTRY="crucible.lab:4000/"
-#ARG CNAMESPACE="oci/"
-#ARG BDATE="$(date --rfc-3339=date)"
-#ARG GHEAD="$(git rev-parse HEAD)"
 ARG REPO="https://server.lab/git"
 ARG NAME="java"
 ARG URI="crucible.lab:4000/oci/java"
@@ -29,7 +25,7 @@ LABEL $NAMESPACE.build-date="$BDATE" \
   $NAMESPACE.cri.cmd.test="podman --cgroup-manager cgroupfs run --entrypoint=/usr/local/bin/test.sh $URI:latest" \
   $NAMESPACE.cri.cmd.debug="" \
   $NAMESPACE.cri.cmd.help="" \
-  $NAMESPACE.cri.params="" \
+  $NAMESPACE.cri.params="" 
 ENV GENESIS="$GENESISARG" \
     SELF="$SELFARG"
 RUN printf "dev-java/icedtea alsa cups -gtk headless-awt jbootstrap libressl -nsplugin sctp shenandoah source sunec -webstart\ndev-java/icedtea-bin -gtk -webstart -alsa -cups\napp-text/ghostscript-gpl cups dbus tiff unicode\ndev-util/pkgconfig internal-glib\n" >> /etc/portage/package.use/java \

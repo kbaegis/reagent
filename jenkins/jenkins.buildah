@@ -1,7 +1,4 @@
 FROM crucible.lab:4000/oci/java:latest
-ARG GENESIS="crucible.lab:4000/oci/java"
-ARG BDATE="$(date --rfc-3339=date)"
-ARG GHEAD="$(git rev-parse HEAD)"
 ARG REPO="https://server.lab/git"
 ARG NAME="jenkins"
 ARG URI="crucible.lab:4000/oci/jenkins"
@@ -29,7 +26,8 @@ LABEL $NAMESPACE.build-date="$BDATE" \
   $NAMESPACE.cri.cmd.debug="" \
   $NAMESPACE.cri.cmd.help="" \
   $NAMESPACE.cri.params=""
-ENV GENESIS="$GENESIS:$BDATE ($GHEAD)"
+ENV GENESIS="$GENESISARG" \
+    SELF="$SELFARG"
 RUN printf 'dev-util/jenkins-bin ~amd64' >>/etc/portage/package.accept_keywords \
  && emerge -bg dev-util/jenkins-bin \
  && $HOME/.build/rsync.sh

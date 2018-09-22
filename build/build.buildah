@@ -1,6 +1,4 @@
 FROM crucible.lab:4000/oci/go:latest
-ARG BDATE="$(date --rfc-3339=date)"
-ARG GHEAD="$(git rev-parse HEAD)"
 ARG GBRANCH="master"
 ARG REPO="https://server.lab/git"
 ARG URI="crucible.lab:4000/oci/build"
@@ -33,7 +31,8 @@ ENV REGISTRY="crucible.lab:4000" \
   NAMESPACE="/oci/" \
   REPO="https://server.lab/git" \
   BUILDAH_TAG="v1.3" \
-  GENESIS="$GENESIS:$BDATE ($GHEAD)"
+  GENESIS="$GENESISARG" \
+  SELF="$SELFARG"
 ADD .x509/* /root/.ssh/
 ADD bin/* /usr/local/bin/
 #RUN git clone -c http.sslVerify=false https://server.lab/git/NullLabs/oci.git /opt/oci/ \

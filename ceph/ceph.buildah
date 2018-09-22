@@ -1,8 +1,5 @@
 #FROM crucible.lab:4000/gentoo/libressl:latest
 FROM crucible.lab:4000/oci/portage:latest
-ARG GENESIS="crucible.lab:4000/oci/portage"
-ARG BDATE="$(date --rfc-3339=date)"
-ARG GHEAD="$(git rev-parse HEAD)"
 ARG REPO="https://server.lab/git"
 ARG NAME="ceph"
 ARG URI="crucible.lab:4000/oci/ceph"
@@ -30,7 +27,8 @@ LABEL $NAMESPACE.build-date="$BDATE" \
   $NAMESPACE.cri.cmd.debug="" \
   $NAMESPACE.cri.cmd.help="" \
   $NAMESPACE.cri.params=""
-ENV GENESIS="$GENESIS:$BDATE ($GHEAD)"
+ENV GENESIS="$GENESISARG" \
+    SELF="$SELFARG"
 RUN echo '=sys-cluster/ceph-12.2.5 ~amd64' >/etc/portage/package.accept_keywords \
  && printf 'dev-lang/python sqlite\ndev-libs/boost python context\nsys-cluster/ceph cephfs fuse mgr radosgw nss -ssl\napp-admin/sudo -sendmail\n' >/etc/portage/package.use/ceph \
  && FEATURES='-usersandbox -sandbox' emerge -bg sys-cluster/ceph dev-util/cmake app-admin/sudo \

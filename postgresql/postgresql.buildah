@@ -1,7 +1,4 @@
 FROM crucible.lab:4000/oci/libressl:latest
-ARG GENESIS="crucible.lab:4000/oci/libressl"
-ARG BDATE="$(date --rfc-3339=date)"
-ARG GHEAD="$(git rev-parse HEAD)"
 ARG REPO="https://server.lab/git"
 ARG NAME="postgresql"
 ARG URI="crucible.lab:4000/oci/postgresql"
@@ -29,15 +26,14 @@ LABEL $NAMESPACE.build-date="$BDATE" \
   $NAMESPACE.cri.cmd.debug="" \
   $NAMESPACE.cri.cmd.help="" \
   $NAMESPACE.cri.params=""
-
 #PGDATA="/etc/postgresql/" \
 ENV PGDATA="/var/lib/postgresql/data/" \
   DATADIR="/var/lib/postgresql/data/" \
   ENCODING="UTF8" \
   TZ="America/Denver" \
   PGPORT="5432" \
-  GENESIS="$GENESIS:$BDATE ($GHEAD)"
-
+  GENESIS="$GENESISARG" \
+  SELF="$SELFARG"
 RUN printf 'dev-db/postgresql -kerberos ldap libressl nls pam perl python readline server ssl threads uuid xml zlib\napp-crypt/mit-krb5 keyutils libressl nls openldap pkinit threads' >>/etc/portage/package.use/postgresql \
  && emerge -bg dev-db/postgresql \
  && $HOME/.build/rsync.sh \

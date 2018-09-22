@@ -1,8 +1,5 @@
 FROM crucible.lab:4000/oci/portage:latest
 #FROM crucible.lab:4000/oci/libressl:latest
-ARG GENESIS="crucible.lab:4000/oci/portage"
-ARG BDATE="$(date --rfc-3339=date)"
-ARG GHEAD="$(git rev-parse HEAD)"
 ARG REPO="https://server.lab/git"
 ARG NAME="strongswan"
 ARG URI="crucible.lab:4000/oci/strongswan"
@@ -31,7 +28,8 @@ LABEL $NAMESPACE.build-date="$BDATE" \
   $NAMESPACE.cri.cmd.help="" \
   $NAMESPACE.cri.params="IPSEC_PATH"
 ENV IPSEC_PATH="/etc/ipsec.conf" \
-    GENESIS="$GENESIS:$BDATE ($GHEAD)"
+    GENESIS="$GENESISARG" \
+    SELF="$SELFARG"
 
 RUN export SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt \
  && printf 'net-vpn/strongswan caps constraints curl dhcp eap gmp non-root openssl pam pkcs11 strongswan_plugins_blowfish strongswan_plugins_ha strongswan_plugins_ipseckey farp' >/etc/portage/package.use/strongswan \

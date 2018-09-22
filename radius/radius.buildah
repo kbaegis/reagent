@@ -1,7 +1,4 @@
 FROM crucible.lab:4000/oci/libressl:latest
-ARG GENESIS="crucible.lab:4000/oci/libressl"
-ARG BDATE="$(date --rfc-3339=date)"
-ARG GHEAD="$(git rev-parse HEAD)"
 ARG REPO="https://server.lab/git"
 ARG NAME="radius"
 ARG URI="crucible.lab:4000/oci/radius"
@@ -33,7 +30,8 @@ LABEL $NAMESPACE.build-date="$BDATE" \
 ENV DATABASESRV="server.mgmt" \
     GITROOT="https://server.lab/git/NullLabs" \
     PACKAGE="yes" \
-    GENESIS="$GENESIS:$BDATE ($GHEAD)"
+    GENESIS="$GENESISARG" \
+    SELF="$SELFARG"
 
 RUN printf "dev-db/postgresql -server\n" >>/etc/portage/package.use/freeradius \
  && emerge -bg sys-libs/talloc dev-util/cmake dev-db/postgresql dev-libs/libpqxx \

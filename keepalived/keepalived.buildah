@@ -1,7 +1,4 @@
 FROM crucible.lab:4000/oci/libressl:latest
-ARG GENESIS="crucible.lab:4000/oci/libressl"
-ARG BDATE="$(date --rfc-3339=date)"
-ARG GHEAD="$(git rev-parse HEAD)"
 ARG REPO="https://server.lab/git"
 ARG NAME="keepalived"
 ARG URI="crucible.lab:4000/oci/keepalived"
@@ -30,7 +27,8 @@ LABEL $NAMESPACE.build-date="$BDATE" \
   $NAMESPACE.cri.cmd.debug="" \
   $NAMESPACE.cri.cmd.help="" \
   $NAMESPACE.cri.params=""
-ENV GENESIS="$GENESIS:$BDATE ($GHEAD)"
+ENV GENESIS="$GENESISARG" \
+    SELF="$SELFARG"
 
 RUN echo 'sys-cluster/keepalived ipv6 snmp' >>/etc/portage/package.use/keepalived \
  && emerge -bg sys-cluster/keepalived net-firewall/conntrack-tools \
