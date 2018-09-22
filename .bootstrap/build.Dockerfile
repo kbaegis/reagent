@@ -73,4 +73,4 @@ ADD catalyst-package.mask/* /etc/catalyst/porgage/package.mask/
 ADD spec/* /var/tmp/catalyst/builds/default/
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
-CMD ["-vpcib","all"]
+CMD ["-h"]
