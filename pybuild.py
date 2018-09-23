@@ -306,6 +306,7 @@ def parse_arguments(arguments):
     parser.add_argument('-t', '--test', dest='test_images', action='store_true', help="Test images using OCIv1.config.Labels instruction before pushing them to registry.")
     parser.add_argument('-T', '--vulnerability', dest='vuln_test_images', action='store_true', help="Run vulnerability tests against images.")
     parser.add_argument('-R', '--disable-registry', dest='disable_registry', action='store_true', help="Disable push to registry.")
+    parser.add_argument('--bootstrap', dest='bootstrap_reagent', action='store_true', help="Bootstrap reagent.")
     args = parser.parse_args(arguments)
     return args
 
@@ -673,6 +674,16 @@ def profileTiming(search, profiler, persist = True):
             #print(str(timeSum))
     return timeSum
 
+def reagentBootstrap(bootstrap, verbose = False):
+    """Function provides bootstrapping for reagent."""
+    if bootstrap is True:
+        progressNotify("Attempting bootstrap.", 2)
+        command = "docker build -t reagent-bootstrap -f " + SCRIPTPATH + "/.bootstrap/build.Dockerfile " + SCRIPTPATH + "/build/"
+        build = sp_run(command, verbose)
+        progressNotify("Bootstrap coomplete.", build.call.returncode)
+        return build.call.returncode
+    return 0
+
 ##Main
 if __name__ == "__main__":
     pending = pendingOperation()
@@ -680,6 +691,7 @@ if __name__ == "__main__":
     args = parse_arguments(sys.argv[1:])
     images = containerGroup(args)
     children = handler()
+    reagentBootstrap(args.bootstrap_reagent, verbose = args.verbose)
     portage_build = portage_build(args.build_portage, images, verbose = args.verbose)
     portagedir = portage_overlay(args, verbose = args.verbose)
     catalyst_build(args.build_catalyst, images, portagedir, verbose = args.verbose)
