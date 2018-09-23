@@ -48,6 +48,8 @@ optional arguments:
 
 From the root directory of this repository, run: `docker build -f .bootstrap/build.Dockerfile ./build/` The build container itself may need to be run as a privileged container: `docker run -it --name build-tmp --privileged --rm --entrypoint=/bin/bash <container tag from previous step>`
 
+Reagent can be used directly as well, with `./pybuild.py --bootstrap` provided the shebang (`#!/usr/bin/sudo /usr/bin/python3`) points to a valid python interpreter. 
+
 ## Design:
 
 By leveraging a binhost in conjunction with portage, the only rebuilds that become necessary are those that are necessary for upgrades or changes in useflags. This gives you full control at every step of the build while cutting down on buildtimes dramatically. Additionally, buildah does not snapshot your container storage after every build step. Snapshotting currently only occurs upon commit. If smaller images are necessary, it's strongly recommended to add a script to remove build dependencies. 
